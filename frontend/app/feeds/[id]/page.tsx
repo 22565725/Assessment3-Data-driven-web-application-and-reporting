@@ -1,54 +1,112 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import PostDetail from "@/Components/feeds/PostDetail";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { posts } from "@/data/posts";
+import { api, toDisplayPost, type ApiPost } from "@/lib/api";
+import { formatAuDateTime } from "@/lib/dates";
 import type { Post } from "@/lib/types";
 
+/**
+ * In Assessment 1 this page searched a hardcoded array plus localStorage.
+ * That breaks once posts come from the database: ids collide with the old
+ * sample data, so a database post would render the WRONG article, and any
+ * id beyond the sample set showed "Post not found".
+ *
+ * It now fetches the single record from the RSS Server by id.
+ */
 export default function PostPage() {
   const params = useParams();
   const id = Number(params?.id);
 
-  /* CHANGED: this page used to hand-roll its own localStorage read — getItem,
-     JSON.parse, try/catch, setState in a useEffect, plus an isLoaded flag. That
-     was a second copy of useLocalStorage that had drifted from the original, and
-     it carried the same set-state-in-effect problem the linter flagged.
-     One hook, used everywhere, is one place to fix things. */
-  const [savedPosts, , isLoaded] = useLocalStorage<Post[]>("myData", []);
+  const [post, setPost] = useState<Post | null>(null);
+  const [raw, setRaw] = useState<ApiPost | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const post: Post | null =
-    [...savedPosts, ...posts].find((item) => item.id === id) ?? null;
+  useEffect(() => {
+    if (!Number.isInteger(id)) {
+      setError("Invalid post id");
+      setLoading(false);
+      return;
+    }
 
-  /* Order matters. Checking for the post BEFORE checking isLoaded means the five
-     sample posts render immediately — they come from a static import, so the
-     server can find them and there is nothing to wait for. Only a post that is
-     genuinely absent from that set has to wait for localStorage to be readable. */
-  if (post) {
+    api
+      .posts()
+      .then((rows) => {
+        const match = rows.find((row) => row.id === id);
+        if (!match) {
+          setError("Post " + id + " was not found on the RSS Server.");
+          return;
+        }
+        setRaw(match);
+        setPost(toDisplayPost(match));
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
     return (
       <main className="mx-auto w-full max-w-5xl flex-1 p-4">
-        <PostDetail post={post} />
+        <p className="text-muted">Loading post from the RSS Server…</p>
       </main>
     );
   }
 
-  if (!isLoaded) {
+  if (error || !post) {
     return (
       <main className="mx-auto w-full max-w-5xl flex-1 p-4">
-        <p className="text-muted">Loading…</p>
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">
+          Post not found
+        </h1>
+        <p className="mb-4 text-muted">{error}</p>
+        <Link href="/feeds" className="text-accent underline">
+          Back to all feeds
+        </Link>
       </main>
     );
   }
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 p-4">
-      <h1 className="mb-2 text-2xl font-semibold text-foreground">
-        Post not found
-      </h1>
-      <Link href="/feeds" className="text-accent underline">
-        Back to all feeds
-      </Link>
+      <PostDetail post={post} />
+
+      {raw && (
+        <section className="mt-6 flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            Record details
+          </h2>
+          <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm text-foreground">
+            <dt className="text-muted">Feed</dt>
+            <dd>{raw.feed?.title ?? "—"}</dd>
+            <dt className="text-muted">Published</dt>
+            <dd>{formatAuDateTime(raw.publishedAt)}</dd>
+            <dt className="text-muted">Categories</dt>
+            <dd>
+              {raw.categories.length > 0
+                ? raw.categories.map((category) => category.name).join(", ")
+                : "—"}
+            </dd>
+            {raw.link && (
+              <>
+                <dt className="text-muted">Original</dt>
+                <dd>
+                  <a
+                    href={raw.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline break-all"
+                  >
+                    {raw.link}
+                  </a>
+                </dd>
+              </>
+            )}
+          </dl>
+        </section>
+      )}
     </main>
   );
 }

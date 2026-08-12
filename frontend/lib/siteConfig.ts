@@ -1,13 +1,22 @@
 export const siteConfig = {
-  assessmentTitle: "CSE5006 Assessment 1 — RSS Server & LMS Frontend",
+  assessmentTitle:
+    "CSE5006 Assessment 2 — Backend Implementation, API and Database",
   shortTitle: "RSS → LMS",
   description:
-    "A usability-focused Next.js and React frontend for an RSS Server feeding into a Learning Management System.",
+    "A full-stack RSS server: a Next.js API backed by a Prisma-managed SQLite database, serving an RSS client built in Assessment 1. Both applications run in Docker on AWS EC2.",
   studentName: "Gizem Erel",
   studentId: "22565725",
+  subject: "CSE5006 Assessment 2",
 
-  // Add the walkthrough video link when the recording is ready.
-  videoUrl: "/video/walkthrough.mp4",
+  // Repositories
+  githubProfile: "https://github.com/22565725",
+  githubBackend:
+    "https://github.com/22565725/Backend-implementation-API-and-database",
+  githubFrontend: "https://github.com/22565725/cse5006-rss-lms-frontend",
+
+  // Empty until the Assessment 2 walkthrough is recorded. The About page
+  // shows a placeholder while this is blank.
+  videoUrl: "",
 } as const;
 
 export const navLinks = [

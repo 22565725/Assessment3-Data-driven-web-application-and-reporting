@@ -7,23 +7,36 @@ import type { Post } from "@/lib/types";
 
 interface FeedListProps {
   posts: Post[];
+  onDelete?: (id: number) => void;
+  deletingId?: number | null;
 }
 
-export default function FeedList({ posts }: FeedListProps) {
-  const [savedPosts] = useLocalStorage<Post[]>("myData", []);
+/**
+ * Assessment 1 merged posts held in localStorage into this list:
+ *     const allPosts = [...savedPosts, ...posts];
+ * Posts now live in the database, so that merge is gone - it would show
+ * browser-only ghosts alongside real records, visible to nobody else.
+ *
+ * localStorage is still used here, but only for LAYOUT PREFERENCES. Whether
+ * you prefer a grid or a list is genuinely per-browser and has no business
+ * on a server.
+ */
+export default function FeedList({
+  posts,
+  onDelete,
+  deletingId = null,
+}: FeedListProps) {
   const [layout] = useLocalStorage<"grid" | "list">("feedLayout", "grid");
   const [showImages] = useLocalStorage<boolean>("feedShowImages", true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const allPosts = [...savedPosts, ...posts];
-
   const filteredPosts = searchQuery.trim()
-    ? allPosts.filter((post) =>
-        post.title.toLowerCase().includes(searchQuery.toLowerCase())
+    ? posts.filter((post) =>
+        post.title.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : allPosts;
+    : posts;
 
   const listClass =
     layout === "grid"
@@ -45,7 +58,7 @@ export default function FeedList({ posts }: FeedListProps) {
       />
 
       <p className="text-sm text-muted" aria-live="polite">
-        Showing {filteredPosts.length} of {allPosts.length} posts
+        Showing {filteredPosts.length} of {posts.length} posts
       </p>
 
       {filteredPosts.length === 0 ? (
@@ -61,6 +74,8 @@ export default function FeedList({ posts }: FeedListProps) {
                 onToggle={() =>
                   setExpandedId(expandedId === post.id ? null : post.id)
                 }
+                onDelete={onDelete}
+                deleting={deletingId === post.id}
               />
             </li>
           ))}

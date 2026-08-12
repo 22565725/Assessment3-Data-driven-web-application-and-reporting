@@ -1,16 +1,26 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { posts as seedPosts } from "@/data/posts";
+import { api, toDisplayPost } from "@/lib/api";
 import type { Post } from "@/lib/types";
 
+/**
+ * Assessment 1 built this list from localStorage plus the hardcoded
+ * data/posts array, which meant the home page kept showing sample content
+ * after the real data moved to the database. It now reads the most recent
+ * posts from the RSS Server.
+ */
 export default function LatestFeeds({ limit = 4 }: { limit?: number }) {
-  const [savedPosts] = useLocalStorage<Post[]>("myData", []);
+  const [latest, setLatest] = useState<Post[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const latest = [...savedPosts, ...seedPosts]
-    .sort((a, b) => b.id - a.id)
-    .slice(0, limit);
+  useEffect(() => {
+    api
+      .posts()
+      .then((rows) => setLatest(rows.slice(0, limit).map(toDisplayPost)))
+      .catch((err: Error) => setError(err.message));
+  }, [limit]);
 
   return (
     <aside
@@ -23,6 +33,12 @@ export default function LatestFeeds({ limit = 4 }: { limit?: number }) {
       >
         Latest in your feed
       </h2>
+
+      {error && <p className="text-sm text-muted">RSS Server unavailable.</p>}
+
+      {!error && latest.length === 0 && (
+        <p className="text-sm text-muted">No posts yet.</p>
+      )}
 
       <ul className="flex flex-col gap-3">
         {latest.map((post) => (
