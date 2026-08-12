@@ -1,0 +1,6 @@
+node_modules
+.next
+sqlite
+*.db
+npm-debug.log
+.git
