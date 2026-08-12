@@ -6,6 +6,7 @@
  */
 
 import type { Post } from "@/lib/types";
+import { formatAuDate } from "@/lib/dates";
 
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? "4080";
 
@@ -139,6 +140,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updatePost: (id: number, payload: Record<string, unknown>) =>
+    request<ApiPost>("/api/posts?id=" + id, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   deletePost: (id: number) =>
     request<{ deleted: boolean }>("/api/posts?id=" + id, { method: "DELETE" }),
   createFeed: (payload: Record<string, unknown>) =>
@@ -161,7 +167,7 @@ export function toDisplayPost(post: ApiPost): Post {
     title: post.title,
     description: post.description ?? post.content ?? "",
     author: post.author?.name ?? "Unknown",
-    date: new Date(post.publishedAt).toLocaleDateString("en-AU"),
+    date: formatAuDate(post.publishedAt),
     imageUrl: post.imageUrl ?? "",
   };
 }

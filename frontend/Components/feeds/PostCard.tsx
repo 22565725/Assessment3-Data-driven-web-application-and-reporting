@@ -6,6 +6,9 @@ interface PostCardProps {
   isExpanded: boolean;
   onToggle: () => void;
   showImage?: boolean;
+  /** Supplied only where editing makes sense; the card works without it. */
+  onDelete?: (id: number) => void;
+  deleting?: boolean;
 }
 
 export default function PostCard({
@@ -13,19 +16,17 @@ export default function PostCard({
   isExpanded,
   onToggle,
   showImage = true,
+  onDelete,
+  deleting = false,
 }: PostCardProps) {
   return (
-    /* CHANGED: "use Cards rather than bricks". A card is a surface that sits
-       ABOVE the page and reacts to the pointer; the old version was a flat
-       outlined rectangle, which is what made it read as a brick. Three things
-       do the work: a resting shadow (it sits above), a deeper shadow plus a
-       small lift on hover (it responds), and a divider under the image (a
-       distinct media region rather than one undifferentiated block).
-       NOT changed: object-contain. Commits 6ca087e and 3461b50 chose to show
-       posts' full images instead of cropping them — that is a decision, so the
-       card frame changes around it and the image fit stays as it was. */
+    /* Assessment 1: "use Cards rather than bricks". A resting shadow so it
+       sits above the page, a deeper shadow and small lift on hover so it
+       responds, and a divider under the image so the media reads as its own
+       region. object-contain is deliberate - posts show their full image
+       rather than being cropped. */
     <article className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      {showImage && (
+      {showImage && post.imageUrl && (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={post.imageUrl}
@@ -63,6 +64,26 @@ export default function PostCard({
           >
             Read more
           </Link>
+
+          {onDelete && (
+            <>
+              <Link
+                href={`/feeds/${post.id}/edit`}
+                className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                Edit
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => onDelete(post.id)}
+                disabled={deleting}
+                className="rounded-md border border-border px-3 py-2 text-sm text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50 dark:text-red-400"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </article>

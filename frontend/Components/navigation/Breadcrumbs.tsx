@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { posts } from "@/data/posts";
 
 const LABELS: Record<string, string> = {
   feeds: "Feeds",
@@ -11,30 +10,26 @@ const LABELS: Record<string, string> = {
   settings: "Settings",
 };
 
-/* ADDED: a URL segment is not a label. /feeds/3 used to render as
-   "Home / Feeds / 3", showing the reader a database id that means nothing to
-   them. Look the title up instead.
+/* CHANGED for Assessment 2. This used to resolve /feeds/3 to the post's
+   title by looking it up in the hardcoded data/posts array. Posts now come
+   from the database, and their ids no longer line up with that array - so
+   the lookup silently rendered the WRONG title for ids 1 to 5 and gave up
+   entirely on anything higher.
 
-   LIMITATION, stated deliberately: only the sample posts can be resolved here.
-   Posts the user created live in localStorage, which does not exist during
-   server rendering — reading it here would either cause a hydration mismatch
-   or need a setState-in-effect, the same anti-pattern the linter flags in
-   useLocalStorage.ts. Those fall back to "Post 7", which is honest and never
-   renders a wrong title. */
+   The crumb now shows the record id, which is always correct and matches
+   what the URL actually addresses. */
 function labelFor(segment: string, parent: string | undefined): string {
   if (LABELS[segment]) return LABELS[segment];
 
   if (parent === "feeds" && /^\d+$/.test(segment)) {
-    const post = posts.find((item) => item.id === Number(segment));
-    return post ? post.title : `Post ${segment}`;
+    return `Post ${segment}`;
   }
 
   return decodeURIComponent(segment);
 }
 
-/* ADDED: "careful with long paths". A post title can be far longer than a URL
-   slug, so a resolved breadcrumb can overflow its row on a narrow screen.
-   Truncate the visible text; the full string stays available via title=. */
+/* Kept from Assessment 1: a crumb can be longer than its row on a narrow
+   screen, so truncate the visible text and keep the full string in title=. */
 const MAX_LABEL = 32;
 
 function truncate(text: string): string {
@@ -63,8 +58,6 @@ export default function Breadcrumbs() {
           const isLast = index === segments.length - 1;
           const label = labelFor(segment, segments[index - 1]);
           const shortLabel = truncate(label);
-          // Only expose title= when the text was actually cut, so hovering an
-          // untruncated crumb does not pop a tooltip repeating what is on screen.
           const fullText = shortLabel === label ? undefined : label;
 
           return (
