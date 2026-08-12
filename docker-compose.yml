@@ -1,0 +1,45 @@
+services:
+  # RSS Server - REST API and SQLite persistence
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: rss-server-api
+    ports:
+      - "4080:3000"
+    environment:
+      - NODE_ENV=production
+      # Absolute path matching the volume mount below. A relative "file:"
+      # URL is resolved against the schema folder and would land in the
+      # wrong place inside the container.
+      - DATABASE_URL=file:/app/sqlite/dev.db
+    volumes:
+      # THE important line. A container filesystem is disposable - without
+      # this named volume the database is destroyed on every rebuild.
+      - sqlite_data:/app/sqlite
+    restart: unless-stopped
+
+  # RSS Client - the Assessment 1 interface
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # NOTE: NEXT_PUBLIC_API_URL is deliberately NOT passed.
+      #
+      # NEXT_PUBLIC_* values are inlined into the browser bundle at build
+      # time, so a hardcoded host means rebuilding the image every time the
+      # Learner Lab assigns a new public IP - which it does on every
+      # stop/start. With it unset, lib/api.ts falls back to deriving the
+      # host from window.location and the port from its own default (4080),
+      # so the client follows whatever address the user loaded it from.
+    container_name: rss-client
+    ports:
+      - "80:3000"
+    depends_on:
+      - api
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
