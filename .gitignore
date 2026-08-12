@@ -1,0 +1,37 @@
+# Dependencies - must never be committed (assessment requirement)
+node_modules/
+**/node_modules/
+
+# Next.js build output
+.next/
+**/.next/
+out/
+build/
+
+# SQLite database files.
+# The schema is tracked via api/prisma/migrations; the data is not.
+*.db
+*.db-journal
+*.sqlite
+api/sqlite/*
+!api/sqlite/.gitkeep
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Local env overrides (api/.env is committed deliberately - no secrets in it)
+.env.local
+.env.production
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+
+# AWS key material - must never reach GitHub
+*.pem

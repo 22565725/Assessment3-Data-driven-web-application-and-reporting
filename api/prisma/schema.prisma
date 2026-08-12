@@ -1,0 +1,130 @@
+// RSS Server - database schema (CSE5006 Assessment 2)
+//
+// Assessment 1 held a single flat Post interface in a hardcoded array:
+//   { id, title, description, author, date, imageUrl }
+// That shape cannot answer what an RSS server must answer: which feed did
+// this come from, show everything by this author, how many posts arrived
+// today. So it is normalised into four related tables, plus one
+// operational table backing the /count endpoint.
+//
+// SQLite notes:
+//   1. Prisma `enum` is unsupported on SQLite, so constrained fields are
+//      String and validated in the API layer.
+//   2. Implicit many-to-many IS supported, so Post <-> Category needs no
+//      hand-written join table.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A subscribed RSS source.
+model Feed {
+  id          Int     @id @default(autoincrement())
+  title       String
+  /// The RSS/XML endpoint. Unique, so a feed cannot be subscribed twice.
+  url         String  @unique
+  siteUrl     String?
+  description String?
+  imageUrl    String?
+  language    String  @default("en")
+  /// Soft switch: pause a feed without deleting its posts.
+  active      Boolean @default(true)
+
+  /// Set by the import endpoint; supports stale-feed alerts in Assessment 3.
+  lastFetchedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts Post[]
+
+  @@index([active])
+  @@map("feeds")
+}
+
+/// The person credited with a post. Separated from Post so renaming an
+/// author updates every one of their posts.
+model Author {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  email     String?  @unique
+  bio       String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts Post[]
+
+  @@map("authors")
+}
+
+/// A single article belonging to a feed.
+model Post {
+  id Int @id @default(autoincrement())
+
+  title       String
+  /// Card summary - maps to Assessment 1's `description`.
+  description String?
+  /// Full article body for the detail page.
+  content     String?
+  /// Canonical URL of the original article.
+  link        String?
+  imageUrl    String?
+
+  /// RSS <guid>. Unique, so re-importing a feed updates rows instead of
+  /// duplicating them.
+  guid String? @unique
+
+  /// When the article was published, as distinct from createdAt, which is
+  /// when this server first stored it.
+  publishedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Deleting a feed removes its posts - an orphaned post has no meaning.
+  feedId Int
+  feed   Feed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  /// Deleting an author clears the credit but keeps the content.
+  authorId Int?
+  author   Author? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  categories Category[]
+
+  @@index([feedId])
+  @@index([publishedAt])
+  @@map("posts")
+}
+
+/// Tag / topic, many-to-many with Post.
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+  slug String @unique
+
+  posts Post[]
+
+  @@map("categories")
+}
+
+/// Operational telemetry behind GET /api/count.
+/// One row per request, so the count survives a restart or container
+/// rebuild - an in-memory counter would not.
+model RequestLog {
+  id         Int      @id @default(autoincrement())
+  method     String
+  path       String
+  statusCode Int
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([path])
+  @@index([createdAt])
+  @@map("request_logs")
+}
