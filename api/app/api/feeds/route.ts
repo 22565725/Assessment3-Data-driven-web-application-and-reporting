@@ -7,9 +7,9 @@ import {
   preflight,
   parseId,
   parseBody,
-  missingFields,
   prismaFail,
 } from "@/lib/http";
+import { validate, feedCreateSchema, feedUpdateSchema } from "@/lib/validation";
 
 /**
  * CRUD for RSS feeds - the subscriptions this server tracks.
@@ -19,17 +19,10 @@ import {
  *   POST   /api/feeds          create   { title, url, ... }
  *   PATCH  /api/feeds?id=1     partial update
  *   DELETE /api/feeds?id=1     delete (cascades to its posts)
+ *
+ * Payload shapes and their rules live in lib/validation.ts, so this file is
+ * only concerned with talking to the database.
  */
-
-interface FeedBody {
-  title?: string;
-  url?: string;
-  siteUrl?: string;
-  description?: string;
-  imageUrl?: string;
-  language?: string;
-  active?: boolean;
-}
 
 export async function OPTIONS() {
   return preflight();
@@ -70,27 +63,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return handle(request, async () => {
-    const body = await parseBody<FeedBody>(request);
-    if (!body) return fail("Request body must be valid JSON", 400);
+    const body = await parseBody<unknown>(request);
+    if (body === null) return fail("Request body must be valid JSON", 400);
 
-    const missing = missingFields(body as Record<string, unknown>, [
-      "title",
-      "url",
-    ]);
-    if (missing.length > 0) {
-      return fail("Missing required field(s): " + missing.join(", "), 400);
-    }
+    const parsed = validate(feedCreateSchema, body);
+    if (!parsed.ok) return parsed.response;
+    const data = parsed.data;
 
     try {
       const feed = await prisma.feed.create({
         data: {
-          title: body.title as string,
-          url: body.url as string,
-          siteUrl: body.siteUrl ?? null,
-          description: body.description ?? null,
-          imageUrl: body.imageUrl ?? null,
-          language: body.language ?? "en",
-          active: body.active ?? true,
+          title: data.title,
+          url: data.url,
+          siteUrl: data.siteUrl ?? null,
+          description: data.description ?? null,
+          imageUrl: data.imageUrl ?? null,
+          language: data.language ?? "en",
+          active: data.active ?? true,
         },
       });
       return ok(feed, 201);
@@ -109,8 +98,12 @@ export async function PATCH(request: NextRequest) {
       return fail("A valid ?id= query parameter is required", 400);
     }
 
-    const body = await parseBody<FeedBody>(request);
-    if (!body) return fail("Request body must be valid JSON", 400);
+    const body = await parseBody<unknown>(request);
+    if (body === null) return fail("Request body must be valid JSON", 400);
+
+    const parsed = validate(feedUpdateSchema, body);
+    if (!parsed.ok) return parsed.response;
+    const data = parsed.data;
 
     try {
       // Only fields actually present in the payload are written, so a PATCH
@@ -118,15 +111,15 @@ export async function PATCH(request: NextRequest) {
       const feed = await prisma.feed.update({
         where: { id },
         data: {
-          ...(body.title !== undefined && { title: body.title }),
-          ...(body.url !== undefined && { url: body.url }),
-          ...(body.siteUrl !== undefined && { siteUrl: body.siteUrl }),
-          ...(body.description !== undefined && {
-            description: body.description,
+          ...(data.title !== undefined && { title: data.title }),
+          ...(data.url !== undefined && { url: data.url }),
+          ...(data.siteUrl !== undefined && { siteUrl: data.siteUrl }),
+          ...(data.description !== undefined && {
+            description: data.description,
           }),
-          ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
-          ...(body.language !== undefined && { language: body.language }),
-          ...(body.active !== undefined && { active: body.active }),
+          ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
+          ...(data.language !== undefined && { language: data.language }),
+          ...(data.active !== undefined && { active: data.active }),
         },
       });
       return ok(feed);
