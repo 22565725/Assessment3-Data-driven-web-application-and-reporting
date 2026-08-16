@@ -35,3 +35,16 @@ yarn-error.log*
 
 # AWS key material - must never reach GitHub
 *.pem
+
+# Submission artefacts that live beside the code now that the project root
+# IS the repository root. Anchored with a leading slash so they only match
+# the top level: the walkthrough video at frontend/public/video/ is served
+# by the About page and IS tracked, so a bare "*.mp4" would wrongly drop it.
+/*.mp4
+/*.zip
+/*.pem
+
+# Course-provided documents (briefs, rubrics, feedback) kept alongside the
+# code for convenience. They are not part of the submission itself.
+/*.docx
+/*.pdf
