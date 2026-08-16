@@ -7,9 +7,9 @@ import {
   preflight,
   parseId,
   parseBody,
-  missingFields,
   prismaFail,
 } from "@/lib/http";
+import { validate, postCreateSchema, postUpdateSchema } from "@/lib/validation";
 
 /**
  * CRUD for posts - the articles inside a feed.
@@ -21,22 +21,10 @@ import {
  *   POST   /api/posts              create   { title, feedId, ... }
  *   PATCH  /api/posts?id=1         partial update
  *   DELETE /api/posts?id=1         delete
+ *
+ * Payload shapes and their rules live in lib/validation.ts, so this file is
+ * only concerned with talking to the database.
  */
-
-interface PostBody {
-  title?: string;
-  description?: string;
-  content?: string;
-  link?: string;
-  imageUrl?: string;
-  guid?: string;
-  publishedAt?: string;
-  feedId?: number;
-  /** Author NAME, not id - the API resolves or creates the Author row. */
-  author?: string;
-  /** Category names - resolved or created the same way. */
-  categories?: string[];
-}
 
 /** "Web Development" -> "web-development" */
 function slugify(name: string): string {
@@ -101,46 +89,41 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return handle(request, async () => {
-    const body = await parseBody<PostBody>(request);
-    if (!body) return fail("Request body must be valid JSON", 400);
+    const body = await parseBody<unknown>(request);
+    if (body === null) return fail("Request body must be valid JSON", 400);
 
-    const missing = missingFields(body as Record<string, unknown>, [
-      "title",
-      "feedId",
-    ]);
-    if (missing.length > 0) {
-      return fail("Missing required field(s): " + missing.join(", "), 400);
-    }
+    const parsed = validate(postCreateSchema, body);
+    if (!parsed.ok) return parsed.response;
+    const data = parsed.data;
 
     try {
       const post = await prisma.post.create({
         data: {
-          title: body.title as string,
-          description: body.description ?? null,
-          content: body.content ?? null,
-          link: body.link ?? null,
-          imageUrl: body.imageUrl ?? null,
-          guid: body.guid ?? null,
-          publishedAt: body.publishedAt
-            ? new Date(body.publishedAt)
-            : new Date(),
-          feed: { connect: { id: Number(body.feedId) } },
+          title: data.title,
+          description: data.description ?? null,
+          content: data.content ?? null,
+          link: data.link ?? null,
+          imageUrl: data.imageUrl ?? null,
+          guid: data.guid ?? null,
+          // The schema already turned this into a Date.
+          publishedAt: data.publishedAt ?? new Date(),
+          feed: { connect: { id: data.feedId } },
           // connectOrCreate means the client sends a name, not an id: reuse
           // the author if we know them, create the row if we do not.
-          ...(body.author
+          ...(data.author
             ? {
                 author: {
                   connectOrCreate: {
-                    where: { name: body.author },
-                    create: { name: body.author },
+                    where: { name: data.author },
+                    create: { name: data.author },
                   },
                 },
               }
             : {}),
-          ...(body.categories && body.categories.length > 0
+          ...(data.categories && data.categories.length > 0
             ? {
                 categories: {
-                  connectOrCreate: body.categories.map((name) => ({
+                  connectOrCreate: data.categories.map((name) => ({
                     where: { name },
                     create: { name, slug: slugify(name) },
                   })),
@@ -166,40 +149,51 @@ export async function PATCH(request: NextRequest) {
       return fail("A valid ?id= query parameter is required", 400);
     }
 
-    const body = await parseBody<PostBody>(request);
-    if (!body) return fail("Request body must be valid JSON", 400);
+    const body = await parseBody<unknown>(request);
+    if (body === null) return fail("Request body must be valid JSON", 400);
+
+    const parsed = validate(postUpdateSchema, body);
+    if (!parsed.ok) return parsed.response;
+    const data = parsed.data;
 
     try {
       const post = await prisma.post.update({
         where: { id },
         data: {
-          ...(body.title !== undefined && { title: body.title }),
-          ...(body.description !== undefined && {
-            description: body.description,
+          ...(data.title !== undefined && { title: data.title }),
+          ...(data.description !== undefined && {
+            description: data.description,
           }),
-          ...(body.content !== undefined && { content: body.content }),
-          ...(body.link !== undefined && { link: body.link }),
-          ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),
-          ...(body.publishedAt !== undefined && {
-            publishedAt: new Date(body.publishedAt),
+          ...(data.content !== undefined && { content: data.content }),
+          ...(data.link !== undefined && { link: data.link }),
+          ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
+          ...(data.guid !== undefined && { guid: data.guid }),
+          ...(data.publishedAt !== undefined && {
+            publishedAt: data.publishedAt,
           }),
-          ...(body.feedId !== undefined && {
-            feed: { connect: { id: Number(body.feedId) } },
+          ...(data.feedId !== undefined && {
+            feed: { connect: { id: data.feedId } },
           }),
-          ...(body.author !== undefined && {
-            author: {
-              connectOrCreate: {
-                where: { name: body.author },
-                create: { name: body.author },
-              },
-            },
+          // An explicit null means "remove the credit", which is a disconnect.
+          // Sending it to connectOrCreate would try to create an author with
+          // no name and fail on the NOT NULL constraint.
+          ...(data.author !== undefined && {
+            author:
+              data.author === null
+                ? { disconnect: true }
+                : {
+                    connectOrCreate: {
+                      where: { name: data.author },
+                      create: { name: data.author },
+                    },
+                  },
           }),
-          ...(body.categories !== undefined && {
+          ...(data.categories !== undefined && {
             categories: {
               // `set: []` first clears existing links, so PATCH replaces the
               // category list rather than appending to it.
               set: [],
-              connectOrCreate: body.categories.map((name) => ({
+              connectOrCreate: data.categories.map((name) => ({
                 where: { name },
                 create: { name, slug: slugify(name) },
               })),

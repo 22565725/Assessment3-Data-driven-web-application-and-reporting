@@ -30,8 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files - local overrides stay out of the repository.
+#
+# api/.env IS committed on purpose. It holds only the SQLite file path and
+# no credentials, so the project runs straight after `git clone` with no
+# manual setup step. Without it, `npx prisma migrate` fails with
+# "environment variable not found: DATABASE_URL".
 .env*
+!.env
 
 # vercel
 .vercel

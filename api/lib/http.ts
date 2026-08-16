@@ -156,13 +156,27 @@ export async function parseBody<T>(request: NextRequest): Promise<T | null> {
   }
 }
 
-/** Returns the names of any required fields missing from a payload. */
-export function missingFields(
-  body: Record<string, unknown>,
-  required: string[],
-): string[] {
-  return required.filter((field) => {
-    const value = body[field];
-    return value === undefined || value === null || value === "";
+/**
+ * A non-JSON response, used by the RSS endpoint - the one route that must
+ * return an XML document rather than the { success, data } envelope,
+ * because it is consumed by feed readers rather than by our own client.
+ *
+ * Cache-Control matters here in a way it does not elsewhere: readers poll a
+ * feed on a timer, and without a cache window a popular feed would hit the
+ * database on every poll from every subscriber.
+ */
+export function xml(
+  body: string,
+  contentType: string,
+  cacheSeconds = 300,
+): NextResponse {
+  return new NextResponse(body, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": contentType,
+      "Cache-Control":
+        "public, max-age=" + cacheSeconds + ", stale-while-revalidate=60",
+    },
   });
 }
