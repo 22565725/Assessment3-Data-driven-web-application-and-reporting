@@ -160,8 +160,8 @@ export async function getSummary(): Promise<MetricsSummary> {
  *
  * The request counts come from RequestLog.feedId, which survives the feed
  * being deleted - so a feed removed today does not silently erase the
- * traffic it served yesterday. Rows whose feed no longer exists are
- * reported as deleted rather than dropped.
+ * traffic it served yesterday. Rows whose feed is not in the table are
+ * reported as unknown rather than dropped.
  */
 export async function getPerFeed(): Promise<FeedMetric[]> {
   const staleBefore = new Date(Date.now() - STALE_HOURS * HOUR_MS);
@@ -212,13 +212,20 @@ export async function getPerFeed(): Promise<FeedMetric[]> {
     };
   });
 
-  // Traffic attributed to feeds that have since been deleted.
+  // Traffic attributed to a feed id that is not in the feeds table.
+  //
+  // Two different situations produce this, and the label has to be true of
+  // both: the feed existed and was deleted, or it never existed and someone
+  // requested it anyway. "Unknown" covers both; "deleted" would assert
+  // something we cannot know. Either way the traffic is real and reporting
+  // it is the point - a run of requests for a feed that is not there is
+  // exactly the kind of thing an operator wants to see.
   const knownIds = new Set(feeds.map((f) => f.id));
   for (const row of requestsByFeed) {
     if (row.feedId !== null && !knownIds.has(row.feedId)) {
       rows.push({
         feedId: row.feedId,
-        title: "(deleted feed " + row.feedId + ")",
+        title: "(unknown feed " + row.feedId + ")",
         active: false,
         posts: 0,
         requests: row._count._all,

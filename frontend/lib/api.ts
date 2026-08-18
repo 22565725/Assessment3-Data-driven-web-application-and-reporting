@@ -156,6 +156,9 @@ export const api = {
     }),
   deleteFeed: (id: number) =>
     request<{ deleted: boolean }>("/api/feeds?id=" + id, { method: "DELETE" }),
+  /** Everything the dashboard needs, in a single request. */
+  metrics: (hours = 24) =>
+    request<MetricsResponse>("/api/metrics?hours=" + hours + "&snapshot=1"),
 };
 
 /**
@@ -191,4 +194,78 @@ export const RSS_PATH = "/rss.xml";
  */
 export function resolveRssUrl(feedId?: number): string {
   return resolveApiUrl() + RSS_PATH + (feedId ? "?feedId=" + feedId : "");
+}
+
+/* ------------------------------------------------------------------ *
+ * Dashboard metrics
+ * ------------------------------------------------------------------ */
+
+export interface MetricsSummary {
+  totalRequests: number;
+  requestsLast24h: number;
+  requestsLastHour: number;
+  uniqueClients: number;
+  uniqueClientsLast24h: number;
+  errors: number;
+  errorRate: number;
+  averageDurationMs: number | null;
+  feeds: number;
+  activeFeeds: number;
+  posts: number;
+  authors: number;
+  categories: number;
+  countingSince: string | null;
+}
+
+export type FeedHealth = "healthy" | "paused" | "empty" | "stale";
+
+export interface FeedMetric {
+  feedId: number;
+  title: string;
+  active: boolean;
+  posts: number;
+  requests: number;
+  lastFetchedAt: string | null;
+  lastPublishedAt: string | null;
+  status: FeedHealth;
+}
+
+export interface ClientMetric {
+  clientId: string;
+  requests: number;
+  errors: number;
+  lastSeen: string;
+}
+
+export interface TimeBucket {
+  bucket: string;
+  requests: number;
+  errors: number;
+  uniqueClients: number;
+  averageDurationMs: number | null;
+}
+
+export type AlertSeverity = "critical" | "warning" | "info";
+
+export interface Alert {
+  severity: AlertSeverity;
+  kind: string;
+  title: string;
+  detail: string;
+}
+
+export interface MetricsResponse {
+  health: {
+    status: string;
+    service: string;
+    uptimeSeconds: number;
+    database: { connected: boolean; provider: string; latencyMs: number };
+    environment: string;
+  };
+  summary: MetricsSummary;
+  perFeed: FeedMetric[];
+  perClient: ClientMetric[];
+  timeSeries: TimeBucket[];
+  alerts: Alert[];
+  generatedAt: string;
 }

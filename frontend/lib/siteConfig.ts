@@ -23,6 +23,7 @@ export const siteConfig = {
 
 export const navLinks = [
   { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/feeds", label: "Feeds" },
   { href: "/feeds/new", label: "New Post" },
   { href: "/about", label: "About" },
