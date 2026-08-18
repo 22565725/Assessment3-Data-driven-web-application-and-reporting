@@ -8,7 +8,9 @@
 import type { Post } from "@/lib/types";
 import { formatAuDate } from "@/lib/dates";
 
-const API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? "4080";
+/** Port the RSS Server listens on. Exported so the server-rendered RSS
+ *  autodiscovery tag in app/layout.tsx can build the same URL. */
+export const API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? "4080";
 
 /**
  * Works out where the RSS Server is.
@@ -170,4 +172,23 @@ export function toDisplayPost(post: ApiPost): Post {
     date: formatAuDate(post.publishedAt),
     imageUrl: post.imageUrl ?? "",
   };
+}
+
+/** Path the RSS Server publishes its feed at. */
+export const RSS_PATH = "/rss.xml";
+
+/**
+ * The public URL of the RSS feed, for subscribe links and autodiscovery.
+ *
+ * Built on resolveApiUrl for the same reason: the feed lives on the RSS
+ * Server's port, and the host is only known at runtime. Pass a feedId to
+ * link to a single feed's channel rather than the aggregate one.
+ *
+ * Call this from the browser, not during SSR - server-side it falls back to
+ * localhost, which is correct for the server but useless to a subscriber.
+ * The server-rendered <link rel="alternate"> tag in app/layout.tsx builds
+ * its URL from the request's Host header instead.
+ */
+export function resolveRssUrl(feedId?: number): string {
+  return resolveApiUrl() + RSS_PATH + (feedId ? "?feedId=" + feedId : "");
 }

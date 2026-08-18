@@ -6,7 +6,8 @@ import Header from "@/Components/layout/Header";
 import Footer from "@/Components/layout/Footer";
 import { ThemeProvider } from "@/Components/theme/ThemeProvider";
 import Breadcrumbs from "@/Components/navigation/Breadcrumbs";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { API_PORT, RSS_PATH } from "@/lib/api";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,10 +19,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: siteConfig.assessmentTitle,
-  description: siteConfig.description,
-};
+/**
+ * Built per-request rather than as a static object, because of the RSS
+ * autodiscovery link.
+ *
+ * That tag is how a browser extension or feed reader finds the feed from
+ * any page of the site, so its href has to be an absolute URL. The address
+ * is not knowable at build time - the Learner Lab reassigns the public IP
+ * on every restart - so it is derived from the Host header of the request
+ * being served, the server-side equivalent of what resolveApiUrl does with
+ * window.location in the browser.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const headerList = await headers();
+
+  // Host carries "name:port"; the feed is on the API port, not this one.
+  const host = headerList.get("host") ?? "localhost";
+  const hostname = host.split(":")[0];
+  const protocol = headerList.get("x-forwarded-proto") ?? "http";
+  const rssUrl = protocol + "://" + hostname + ":" + API_PORT + RSS_PATH;
+
+  return {
+    title: siteConfig.assessmentTitle,
+    description: siteConfig.description,
+    alternates: {
+      types: {
+        "application/rss+xml": [
+          { url: rssUrl, title: siteConfig.shortTitle + " — all posts" },
+        ],
+      },
+    },
+  };
+}
 
 export default async function RootLayout({
   children,

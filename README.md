@@ -1,14 +1,16 @@
-# RSS Server — Backend Implementation, API and Database
+# RSS Server — Data-driven Web Application and Reporting
 
-CSE5006 Assessment 2 · Gizem Erel · 22565725
+CSE5006 Assessment 3 · Gizem Erel · 22565725
 
 An RSS aggregation server for a Learning Management System. Feeds, posts,
-authors and categories are stored in SQLite through Prisma and served over a
-REST API, which a separate Next.js client consumes. Both applications run as
-Docker containers.
+authors and categories are stored in SQLite through Prisma, **published as a
+standards-compliant RSS 2.0 feed**, and served over a REST API which a
+separate Next.js client consumes. Both applications run as Docker containers.
 
-This builds directly on Assessment 1, which delivered the interface with
-hardcoded sample data. That data source has been replaced by a real backend.
+This builds directly on the earlier assessments. Assessment 1 delivered the
+interface with hardcoded sample data. Assessment 2 replaced that data source
+with a real backend, API and database. Assessment 3 adds the published feed,
+a typed validation layer, and the dashboard and reporting work.
 
 ---
 
@@ -95,12 +97,12 @@ rebuild would destroy the data.
 
 ## Quick start
 
-Requires Docker and docker-compose.
+Requires Docker with the Compose plugin (`docker compose`, v2).
 
 ```bash
-git clone https://github.com/22565725/Backend-implementation-API-and-database.git
-cd Backend-implementation-API-and-database
-docker-compose up --build -d
+git clone https://github.com/22565725/Assessment3-Data-driven-web-application-and-reporting.git
+cd Assessment3-Data-driven-web-application-and-reporting
+docker compose up --build -d
 ```
 
 Then:
@@ -116,10 +118,10 @@ Useful commands:
 
 ```bash
 docker ps                            # both containers should be Up
-docker-compose logs api              # watch migrations run at startup
+docker compose logs api              # watch migrations run at startup
 docker exec rss-server-api node prisma/seed.mjs   # restore the seed data
-docker-compose down                  # stop (the volume survives)
-docker-compose down -v               # stop AND delete the database
+docker compose down                  # stop (the volume survives)
+docker compose down -v               # stop AND delete the database
 ```
 
 ### Running on AWS EC2
@@ -260,6 +262,43 @@ Single-record operations use a query string (`?id=1`) rather than a dynamic
 than ids. Prisma's `connectOrCreate` resolves or creates them, which removes a
 read-then-write round trip from the client.
 
+### The published RSS feed
+
+This is the endpoint that makes the project an RSS *server* rather than a
+database of RSS-shaped records. Everything else here answers our own client
+in JSON; this answers anybody's feed reader in XML.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/rss.xml`, `/feed.xml` or `/api/rss` | RSS 2.0 document, all active feeds |
+| GET | `/rss.xml?feedId=1` | One feed republished as its own channel |
+| GET | `/rss.xml?limit=20` | Cap the number of items (default 50, max 200) |
+
+Served as `application/rss+xml`, not JSON, and cached for five minutes —
+readers poll on a timer, and without a cache window every subscriber would
+hit the database on every poll.
+
+Three namespaced extensions cover what RSS 2.0 itself cannot express:
+
+| Namespace | Element | Why it is needed |
+|---|---|---|
+| `atom:` | `<atom:link rel="self">` | RSS has no way for a document to state its own URL, and validators warn without it |
+| `dc:` | `<dc:creator>` | RSS `<author>` is *required* to contain an email address, so a display-name-only author would produce an invalid feed |
+| `media:` | `<media:content>` | `<enclosure>` requires a byte length we cannot know without fetching every image |
+
+Other correctness details: article bodies are wrapped in CDATA so their HTML
+survives, with any `]]>` split across two sections; control characters are
+stripped, because a single `0x00` makes the whole document unparseable and a
+reader drops the entire feed rather than one item; `pubDate` uses RFC-822 via
+`toUTCString`, which is specified to emit English regardless of the
+container's locale; and `isPermaLink` is only `true` when the guid *is* the
+item's link, since a URL-shaped identifier that resolves to nothing would
+send readers to a 404.
+
+The RSS Client advertises the feed with a `<link rel="alternate">` tag on
+every page, which is how a browser extension or reader discovers it without
+being given the address.
+
 ### Operational
 
 | Method | Path | Purpose |
@@ -274,6 +313,40 @@ real request is failing.
 `/count` reads from the `RequestLog` table rather than an in-memory counter,
 so the figure survives a restart or container rebuild and would be consistent
 across multiple replicas.
+
+### Request validation
+
+Every write endpoint validates its payload against a typed schema in
+`api/lib/validation.ts` before touching the database. Assessment 2 checked
+payloads inline with a `missingFields()` helper that only answered "is this
+key present?", so `url: "not-a-url"` or `publishedAt: "yesterday"` would be
+stored happily. That matters far more now the same records are published as
+XML that external parsers consume.
+
+| Rule | Effect |
+|---|---|
+| URLs must parse **and** be http(s) | Blocks `javascript:` and `file:` |
+| Dates must be parseable | Rejects `"yesterday"`; schema outputs a real `Date` |
+| Lengths bounded | Title 300, description 5 000, content 100 000 |
+| Unknown keys rejected | A misspelled `discription` is reported, not silently dropped |
+| Blank means null | `""` from a cleared form and `null` from the client normalise together |
+
+Failures return **400** with one entry per offending field, so the client can
+mark the specific input rather than showing a single vague message:
+
+```json
+{
+  "success": false,
+  "error": {
+    "message": "Validation failed",
+    "details": [{ "field": "link", "message": "link must be an absolute http:// or https:// URL" }]
+  }
+}
+```
+
+DTO types are inferred from the schemas with `z.infer`, so the TypeScript
+type and the runtime check cannot drift apart — which a hand-written
+interface plus a hand-written check cannot guarantee.
 
 ### Status codes
 

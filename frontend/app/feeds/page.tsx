@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import FeedList from "@/Components/feeds/FeedList";
+import SubscribeLink from "@/Components/feeds/SubscribeLink";
 import { api, toDisplayPost } from "@/lib/api";
 import type { Post } from "@/lib/types";
 
@@ -57,6 +58,10 @@ export default function FeedsPage() {
         >
           + New post
         </Link>
+      </div>
+
+      <div className="mb-6">
+        <SubscribeLink />
       </div>
 
       {loading && (
