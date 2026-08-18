@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -59,10 +60,68 @@ export function preflight(): NextResponse {
  * Best-effort by design: if the insert fails we log and carry on, because
  * telemetry must never be the reason a user's request fails.
  */
+/**
+ * Salt for client hashing. Overridable per deployment so the same IP does not
+ * produce the same key across environments.
+ */
+const CLIENT_ID_SALT = process.env.CLIENT_ID_SALT ?? "cse5006-rss-server";
+
+/**
+ * Works out who is calling, without storing who is calling.
+ *
+ * Two sources, in order:
+ *
+ *  1. An X-Client-Id header, if the caller sends one. This is what makes load
+ *     testing meaningful: JMeter runs from a single machine, so without it
+ *     ten thousand simulated clients would share one IP and the "unique
+ *     clients" metric would report 1. It is also how real APIs identify
+ *     callers, via a key rather than a network address.
+ *
+ *  2. Otherwise a salted SHA-256 of the IP, truncated. An IP address is
+ *     personal data, and counting distinct callers never requires knowing
+ *     who they are - only whether two requests came from the same someone.
+ *     Hashing keeps the metric and discards the identity.
+ *
+ * Returns null when neither is available, which is honest: a missing client
+ * is better than a wrong one.
+ */
+function resolveClientId(request: NextRequest): string | null {
+  const declared = request.headers.get("x-client-id");
+  if (declared) return declared.trim().slice(0, 64);
+
+  // x-forwarded-for is a comma-separated chain; the original client is first.
+  const forwarded = request.headers.get("x-forwarded-for");
+  const ip = forwarded
+    ? forwarded.split(",")[0].trim()
+    : request.headers.get("x-real-ip");
+
+  if (!ip) return null;
+
+  const digest = createHash("sha256")
+    .update(CLIENT_ID_SALT + ":" + ip)
+    .digest("hex");
+
+  return "ip_" + digest.slice(0, 16);
+}
+
+/**
+ * Per-request scratch space a handler can write to, so the logger can record
+ * things only the handler knows.
+ *
+ * Chiefly feedId: handle() sees a URL, and cannot tell that
+ * /api/posts?feedId=2 and /api/feeds?id=2 both concern feed 2 while
+ * /api/posts?id=2 concerns a post. Sniffing query parameters here would
+ * break the moment one is renamed, so each route states it outright.
+ */
+export interface RequestContext {
+  feedId?: number | null;
+}
+
 async function recordRequest(
   request: NextRequest,
   statusCode: number,
   durationMs: number,
+  context: RequestContext,
 ): Promise<void> {
   try {
     await prisma.requestLog.create({
@@ -71,6 +130,8 @@ async function recordRequest(
         path: new URL(request.url).pathname,
         statusCode,
         durationMs,
+        clientId: resolveClientId(request),
+        feedId: context.feedId ?? null,
       },
     });
   } catch (error) {
@@ -85,19 +146,22 @@ async function recordRequest(
  */
 export async function handle(
   request: NextRequest,
-  fn: () => Promise<NextResponse>,
+  fn: (context: RequestContext) => Promise<NextResponse>,
 ): Promise<NextResponse> {
   const startedAt = Date.now();
+  // Handlers that have nothing extra to report simply ignore this argument,
+  // which is why every existing route kept working unchanged.
+  const context: RequestContext = {};
   let response: NextResponse;
 
   try {
-    response = await fn();
+    response = await fn(context);
   } catch (error) {
     console.error("[" + request.method + " " + request.url + "]", error);
     response = fail("Internal server error", 500);
   }
 
-  await recordRequest(request, response.status, Date.now() - startedAt);
+  await recordRequest(request, response.status, Date.now() - startedAt, context);
   return response;
 }
 

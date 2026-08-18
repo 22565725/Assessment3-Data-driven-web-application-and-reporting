@@ -29,7 +29,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const hasId = request.nextUrl.searchParams.has("id");
     const id = parseId(request);
 
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (id !== null) {
+      ctx.feedId = id;
       const feed = await prisma.feed.findUnique({
         where: { id },
         include: {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const body = await parseBody<unknown>(request);
     if (body === null) return fail("Request body must be valid JSON", 400);
 
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
           active: data.active ?? true,
         },
       });
+      ctx.feedId = feed.id;
       return ok(feed, 201);
     } catch (error) {
       const mapped = prismaFail(error);
@@ -92,11 +94,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const id = parseId(request);
     if (id === null) {
       return fail("A valid ?id= query parameter is required", 400);
     }
+    ctx.feedId = id;
 
     const body = await parseBody<unknown>(request);
     if (body === null) return fail("Request body must be valid JSON", 400);
@@ -132,11 +135,12 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const id = parseId(request);
     if (id === null) {
       return fail("A valid ?id= query parameter is required", 400);
     }
+    ctx.feedId = id;
 
     try {
       // onDelete: Cascade in the schema removes this feed's posts too.

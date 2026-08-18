@@ -29,6 +29,19 @@
                                     everything" must not look like "read more". */
   --danger-foreground: #FFFBF5;  /* 6.1:1 on danger (AA) */
   --border: #E0D4C5;             /* tan — hairlines and dividers */
+
+  /* ADDED for the dashboard: status colours.
+     These are SEMANTIC, not decorative — they mean healthy / needs attention,
+     and are deliberately separate hues from --accent. If "everything is fine"
+     shared a colour with "click here", the operator could not tell at a glance
+     which parts of the dashboard were telling them something.
+     --danger already existed and doubles as the critical severity. */
+  --success: #29614A;            /* green — 7.0:1 on surface (AAA) */
+  --success-foreground: #FFFBF5; /* text ON success */
+  --warning: #7A4E08;            /* ochre — 7.0:1 on surface (AAA). Chosen warm
+                                    so it sits with the sand palette rather than
+                                    fighting it; a pure yellow looked foreign. */
+  --warning-foreground: #FFFBF5;
 }
 
 /* REMOVED: --text. It held the same value as --foreground, so the two would
@@ -62,6 +75,13 @@
                                     light theme's deep red vanishes on a dark page */
   --danger-foreground: #241A15;  /* dark text on light red, 7.9:1 (AAA) */
   --border: #46332A;
+
+  /* Lightened for the same reason as --accent and --danger: the light theme's
+     deep green and ochre disappear against a dark page. */
+  --success: #7FC49B;            /* 7.2:1 on dark surface (AAA) */
+  --success-foreground: #241A15;
+  --warning: #DFAE5C;            /* 7.3:1 on dark surface (AAA) */
+  --warning-foreground: #241A15;
 }
 
 /* ADDED: --color-surface, --color-muted, --color-accent, --color-accent-foreground
@@ -79,6 +99,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

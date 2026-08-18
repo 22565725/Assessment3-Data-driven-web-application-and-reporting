@@ -113,7 +113,7 @@ model Category {
   @@map("categories")
 }
 
-/// Operational telemetry behind GET /api/count.
+/// Operational telemetry behind GET /api/count and the dashboard.
 /// One row per request, so the count survives a restart or container
 /// rebuild - an in-memory counter would not.
 model RequestLog {
@@ -122,9 +122,58 @@ model RequestLog {
   path       String
   statusCode Int
   durationMs Int?
-  createdAt  DateTime @default(now())
+
+  /// Pseudonymous client key: an X-Client-Id header when the caller supplies
+  /// one, otherwise a salted hash of the IP address.
+  ///
+  /// Hashed rather than stored raw because an IP address is personal data and
+  /// counting distinct callers does not require knowing who they are. The
+  /// header takes precedence so a load test can simulate many clients from
+  /// one machine - without it, ten thousand JMeter threads would share a
+  /// single IP and collapse into one "unique client".
+  clientId String?
+
+  /// Which feed this request concerned, where it concerned one.
+  ///
+  /// Deliberately a plain Int and NOT a foreign key. Telemetry is a record of
+  /// what happened; deleting a feed must not rewrite the history of requests
+  /// that were served for it while it existed.
+  feedId Int?
+
+  createdAt DateTime @default(now())
 
   @@index([path])
   @@index([createdAt])
+  @@index([clientId])
+  @@index([feedId])
   @@map("request_logs")
+}
+
+/// Hourly rollup of RequestLog, powering the dashboard's trend charts.
+///
+/// RequestLog stays the source of truth - every figure on the dashboard can
+/// be recomputed from it, so the two can never disagree. This table exists
+/// because scanning every row to draw a 24-hour chart on each page load gets
+/// slower as the log grows, while an hour that has already passed can never
+/// change. Snapshots are written on demand and keyed on the hour, so
+/// recomputing one simply overwrites it.
+model MetricSnapshot {
+  id Int @id @default(autoincrement())
+
+  /// Start of the hour this row summarises. Unique, so a rebuild is an upsert.
+  bucketStart DateTime @unique
+
+  requests      Int
+  errors        Int
+  uniqueClients Int
+  avgDurationMs Int?
+
+  /// Content totals as at the end of the bucket, for growth over time.
+  feedCount Int
+  postCount Int
+
+  createdAt DateTime @default(now())
+
+  @@index([bucketStart])
+  @@map("metric_snapshots")
 }
