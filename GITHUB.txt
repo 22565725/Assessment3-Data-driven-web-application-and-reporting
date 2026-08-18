@@ -1,0 +1,119 @@
+CSE5006 - ASSESSMENT 3
+Data-driven Web Application and Reporting
+================================================================
+
+STUDENT
+  Name            Gizem Erel
+  Student number  22565725
+
+
+GITHUB REPOSITORIES
+  Assessment 3 (this project)
+    https://github.com/22565725/Assessment3-Data-driven-web-application-and-reporting
+
+  Assessment 2 (backend, API and database - this project's starting point)
+    https://github.com/22565725/Backend-implementation-API-and-database
+
+  Assessment 1 (frontend, carried through both)
+    https://github.com/22565725/cse5006-rss-lms-frontend
+
+  GitHub profile
+    https://github.com/22565725
+
+The full commit history, feature branches and merges are on GitHub. The
+Assessment 2 history is preserved in this repository, so the work added for
+Assessment 3 can be read as a diff against it.
+
+
+WHAT THIS IS
+  An RSS aggregation server for a Learning Management System.
+
+  Two Next.js applications that talk to each other over HTTP:
+
+    frontend/   RSS Client - the Assessment 1 interface, reading all its
+                content from the API
+    api/        RSS Server - REST API, published RSS feed, Prisma ORM,
+                SQLite database
+
+  Both run as Docker containers.
+
+
+HOW TO RUN IT
+
+  Requires Docker with the Compose plugin.
+
+    docker compose up --build -d
+
+  Then open:
+    RSS Client   http://localhost
+    RSS Server   http://localhost:4080
+    RSS feed     http://localhost:4080/rss.xml
+
+  No manual database setup is needed. The API container applies its own
+  migrations and loads the seed data when it starts.
+
+  Full instructions, the database design and the complete API reference
+  are in README.md.
+
+
+API ENDPOINTS (summary)
+
+  Published feed
+    GET     /rss.xml                RSS 2.0 document, all active feeds
+    GET     /feed.xml               alias
+    GET     /api/rss                alias
+    GET     /rss.xml?feedId=1       one feed as its own channel
+    GET     /rss.xml?limit=20       cap the item count
+
+  CRUD
+    GET     /api/feeds              all feeds with post counts
+    GET     /api/feeds?id=1         one feed and its posts
+    POST    /api/feeds              create
+    PATCH   /api/feeds?id=1         update
+    DELETE  /api/feeds?id=1         delete (cascades to its posts)
+
+    GET     /api/posts              all posts, newest first
+    GET     /api/posts?id=1         one post with its relations
+    GET     /api/posts?feedId=2     posts in one feed
+    POST    /api/posts              create
+    PATCH   /api/posts?id=1         update
+    DELETE  /api/posts?id=1         delete
+
+  Operational
+    GET     /health   or  /api/health   database health check
+    GET     /count    or  /api/count    request and content statistics
+
+
+WHAT CHANGED SINCE ASSESSMENT 2
+
+  Published RSS feed
+    Assessment 2 stored RSS-shaped records but never generated an RSS
+    document, so nothing could subscribe to it. api/lib/rss.ts now builds
+    a standards-compliant RSS 2.0 feed from the database, served at
+    /rss.xml as application/rss+xml, with the atom, Dublin Core and Media
+    RSS namespaces covering what RSS 2.0 cannot express on its own.
+
+  Typed request validation
+    Payload rules moved out of the route handlers into reusable Zod
+    schemas in api/lib/validation.ts. DTO types are inferred from the
+    schemas, so the compile-time type and the runtime check cannot drift
+    apart. Errors are returned field by field.
+
+  Feed discovery in the client
+    Every page carries a <link rel="alternate" type="application/rss+xml">
+    tag, and the Feeds page shows the feed address with open and copy
+    controls.
+
+
+NOTES
+
+  node_modules is not included, as required. Run "npm install" in api/
+  and frontend/ if running without Docker.
+
+  api/.env is committed deliberately. It contains only the SQLite file
+  path and no credentials, so the project runs straight after cloning.
+  docker-compose.yml overrides it with an absolute path in the container.
+
+  The project was developed and deployed on an AWS Academy EC2 instance.
+  Those public addresses change each time the lab restarts, so no live
+  URL is listed here - use the Docker instructions above to run it.

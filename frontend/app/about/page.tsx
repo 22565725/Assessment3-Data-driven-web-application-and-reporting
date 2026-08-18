@@ -34,6 +34,41 @@ export default function AboutPage() {
 
         <section className={boxClass}>
           <h2 className="text-lg font-semibold text-foreground">
+            Publishing RSS
+          </h2>
+          <p className="text-foreground">
+            Storing feed records and publishing a feed are different things.
+            The database holds titles, authors, categories and publication
+            dates; the RSS Server turns those rows back into an RSS 2.0 XML
+            document that any external reader can subscribe to.
+          </p>
+          <p className="text-foreground">
+            The feed is served at{" "}
+            <code className="font-mono text-sm">/rss.xml</code>, with{" "}
+            <code className="font-mono text-sm">/feed.xml</code> and{" "}
+            <code className="font-mono text-sm">/api/rss</code> as aliases.
+            Adding <code className="font-mono text-sm">?feedId=</code>{" "}
+            republishes a single feed on its own, and the aggregate document
+            covers every feed still marked active.
+          </p>
+          <p className="text-foreground">
+            Because the document is consumed by software rather than by this
+            interface, it is served as{" "}
+            <code className="font-mono text-sm">application/rss+xml</code>{" "}
+            rather than JSON, dates are written in the RFC-822 form the
+            specification requires, and article bodies are wrapped in CDATA
+            so their HTML survives intact.
+          </p>
+          <p className="text-foreground">
+            Every page also carries a{" "}
+            <code className="font-mono text-sm">link rel="alternate"</code>{" "}
+            tag pointing at the feed, which is how a browser extension or
+            reader discovers it without being told the address.
+          </p>
+        </section>
+
+        <section className={boxClass}>
+          <h2 className="text-lg font-semibold text-foreground">
             How it works
           </h2>
           <ArchitectureDiagram />
@@ -88,6 +123,21 @@ export default function AboutPage() {
                   className={linkClass}
                 >
                   {siteConfig.githubProfile}
+                </a>
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="text-muted">
+                Assessment 3 — this project
+              </dt>
+              <dd>
+                <a
+                  href={siteConfig.githubAssessment3}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={linkClass}
+                >
+                  {siteConfig.githubAssessment3}
                 </a>
               </dd>
             </div>
