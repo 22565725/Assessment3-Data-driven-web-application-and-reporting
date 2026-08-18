@@ -124,6 +124,38 @@ docker compose down                  # stop (the volume survives)
 docker compose down -v               # stop AND delete the database
 ```
 
+### Simulated input records
+
+A freshly seeded database cannot demonstrate reporting over time: every
+feed looks identical, the chart is a flat line and the alert panel has
+nothing to say. `prisma/simulate.mjs` generates the history that makes
+those views meaningful.
+
+```bash
+npm run db:simulate                 # add content and 48h of traffic
+npm run db:simulate -- --reset      # clear simulated traffic first
+docker exec rss-server-api node prisma/simulate.mjs --reset   # in Docker
+```
+
+It writes two kinds of record. **Content**: feeds, authors, categories and
+posts published across the last three weeks, so per-feed counts and
+publication dates genuinely differ. **Traffic**: request log rows backdated
+across 48 hours, attributed to named clients and to feeds, so
+requests-per-feed, requests-per-client, unique-client counts and the hourly
+chart all have something real to aggregate.
+
+Two details make the output credible rather than merely present. The feed
+states are chosen to cover every branch of the status logic - healthy,
+stale, empty and paused - so the alert panel demonstrates each kind of
+warning instead of only the one that happens to occur. And hourly volume
+follows a campus rhythm rather than a uniform distribution: quiet
+overnight, busy late morning, a second peak in the evening.
+
+The generator is seeded (`--seed=N`, default 22565725) rather than using
+`Math.random`, so the same command always produces the same dashboard. A
+screenshot taken today can be reproduced tomorrow, and a demonstration can
+be rehearsed.
+
 ### Running on AWS EC2
 
 Open inbound TCP **22**, **80** and **4080** in the security group, then
