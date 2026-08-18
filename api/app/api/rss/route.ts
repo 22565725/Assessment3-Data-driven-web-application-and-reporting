@@ -41,6 +41,17 @@ export async function OPTIONS() {
  * public IP on every restart, which is the same reason the RSS Client
  * derives the API host from window.location.
  */
+function requestOrigin(request: NextRequest): string {
+  // Host is what the CLIENT asked for. request.url is what the SERVER sees,
+  // and inside a container those differ: Docker maps public 4080 to internal
+  // 3000, so request.url reports localhost:3000 and the feed would advertise
+  // an address no subscriber could reach.
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  return host ? proto + "://" + host : new URL(request.url).origin;
+}
+
 function selfUrl(request: NextRequest): string {
   const url = new URL(request.url);
   // Reflect only the parameters that actually shape the document.
@@ -50,12 +61,12 @@ function selfUrl(request: NextRequest): string {
     if (value) params.set(key, value);
   }
   const query = params.toString();
-  return url.origin + url.pathname + (query ? "?" + query : "");
+  return requestOrigin(request) + url.pathname + (query ? "?" + query : "");
 }
 
 /** The site the aggregate feed describes. */
 function siteUrl(request: NextRequest): string {
-  return process.env.PUBLIC_SITE_URL ?? new URL(request.url).origin;
+  return process.env.PUBLIC_SITE_URL ?? requestOrigin(request);
 }
 
 export async function GET(request: NextRequest) {
