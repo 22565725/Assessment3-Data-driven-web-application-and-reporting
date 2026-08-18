@@ -59,7 +59,7 @@ function siteUrl(request: NextRequest): string {
 }
 
 export async function GET(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const params = request.nextUrl.searchParams;
 
     const feedIdRaw = params.get("feedId");
@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
         return fail("feedId must be a positive integer", 400);
       }
       feedId = parsed;
+      // A single-feed request is attributable; the aggregate feed is not.
+      ctx.feedId = parsed;
     }
 
     let limit = DEFAULT_LIMIT;

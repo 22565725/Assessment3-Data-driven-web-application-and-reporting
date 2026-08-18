@@ -46,7 +46,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const params = request.nextUrl.searchParams;
     const hasId = params.has("id");
     const id = parseId(request);
@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
         include: withRelations,
       });
       if (!post) return fail("Post " + id + " not found", 404);
+      ctx.feedId = post.feedId;
       return ok(post);
     }
 
@@ -76,6 +77,8 @@ export async function GET(request: NextRequest) {
       return fail("limit must be a positive integer", 400);
     }
 
+    ctx.feedId = feedId;
+
     const posts = await prisma.post.findMany({
       where: feedId ? { feedId } : undefined,
       orderBy: { publishedAt: "desc" },
@@ -88,7 +91,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const body = await parseBody<unknown>(request);
     if (body === null) return fail("Request body must be valid JSON", 400);
 
@@ -133,6 +136,7 @@ export async function POST(request: NextRequest) {
         },
         include: withRelations,
       });
+      ctx.feedId = post.feedId;
       return ok(post, 201);
     } catch (error) {
       const mapped = prismaFail(error);
@@ -143,7 +147,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const id = parseId(request);
     if (id === null) {
       return fail("A valid ?id= query parameter is required", 400);
@@ -202,6 +206,7 @@ export async function PATCH(request: NextRequest) {
         },
         include: withRelations,
       });
+      ctx.feedId = post.feedId;
       return ok(post);
     } catch (error) {
       const mapped = prismaFail(error, "Post " + id + " not found");
@@ -212,7 +217,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  return handle(request, async () => {
+  return handle(request, async (ctx) => {
     const id = parseId(request);
     if (id === null) {
       return fail("A valid ?id= query parameter is required", 400);
@@ -220,6 +225,7 @@ export async function DELETE(request: NextRequest) {
 
     try {
       const post = await prisma.post.delete({ where: { id } });
+      ctx.feedId = post.feedId;
       return ok({ deleted: true, post });
     } catch (error) {
       const mapped = prismaFail(error, "Post " + id + " not found");
