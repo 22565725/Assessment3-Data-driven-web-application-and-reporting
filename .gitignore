@@ -43,11 +43,10 @@ yarn-error.log*
 /*.zip
 /*.pem
 
-# The Assessment 3 walkthrough. Served from here through a bind mount, so it
-# publishes without rebuilding the image - but not tracked: it is tens of
-# megabytes, and it belongs in the submission zip rather than in every clone.
-/video/*
-!/video/.gitkeep
+# The Assessment 3 walkthrough at frontend/public/video/ IS tracked, so that
+# a clone or a rebuild has everything the About page needs. A bind mount was
+# tried instead to avoid the size, but an empty mounted directory shadows the
+# file inside the image - so the simple thing wins.
 
 # Course-provided documents (briefs, rubrics, feedback) kept alongside the
 # code for convenience. They are not part of the submission itself.
