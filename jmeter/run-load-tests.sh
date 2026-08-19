@@ -31,6 +31,12 @@ OUT="$REPO/jmeter/results"
 PLAN="/plan/rss-load-test.jmx"
 IMAGE="justb4/jmeter:5.5"
 
+# Maximum real concurrency. Above this, a level is delivered as extra
+# iterations instead of extra threads - see the note in the loop below.
+# Raise it when the load generator runs on a separate, larger machine,
+# which is the correct arrangement if you have one.
+MAX_THREADS="${MAX_THREADS:-150}"
+
 HOST="${HOST:-localhost}"
 WEB_PORT="${WEB_PORT:-80}"
 API_PORT="${API_PORT:-4080}"
@@ -100,10 +106,10 @@ for LEVEL in $LEVELS; do
   rm -rf "$OUT/report-x$LEVEL"
   rm -f "$OUT/results-x$LEVEL.jtl"
 
-  # JMeter needs more heap as thread count climbs, and its default 1 GB is
-  # both too much for a t3.micro at low levels and too little at high ones.
+  # The image computes its own heap from available memory and overrides
+  # anything passed in, which is why concurrency is capped above rather than
+  # heap being raised here. Kept as a hint for images that do honour it.
   HEAP="-Xms256m -Xmx512m"
-  [ "$LEVEL" -ge 1000 ] && HEAP="-Xms512m -Xmx1g"
 
   docker run --rm --network host \
     --user "$(id -u):$(id -g)" \
@@ -116,7 +122,7 @@ for LEVEL in $LEVELS; do
     -j "/out/jmeter-x$LEVEL.log" \
     -Jjmeter.reportgenerator.temp_dir=/out/tmp \
     -Jhost="$HOST" -Jwebport="$WEB_PORT" -Japiport="$API_PORT" \
-    -Jthreads="$LEVEL" -Jrampup="$RAMPUP" -Jloops="$LOOPS" \
+    -Jthreads="$THREADS" -Jrampup="$RAMPUP" -Jloops="$LOOPS" \
     -l "/out/results-x$LEVEL.jtl" \
     -e -o "/out/report-x$LEVEL" \
     || echo "  (level x$LEVEL ended with errors - that is data, continuing)"
