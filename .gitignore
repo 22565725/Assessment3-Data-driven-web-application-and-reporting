@@ -48,3 +48,10 @@ yarn-error.log*
 # code for convenience. They are not part of the submission itself.
 /*.docx
 /*.pdf
+
+# Playwright output. The tests are tracked; their results are not - a report
+# is a record of one run against one deployment, not part of the source.
+playwright-report/
+test-results/
+blob-report/
+.playwright/
