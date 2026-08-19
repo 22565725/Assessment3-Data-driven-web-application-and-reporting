@@ -5,9 +5,9 @@ CSE5006 Assessment 3 · Gizem Erel · 22565725
 Results from Playwright, JMeter and Lighthouse, run against the deployed
 application on AWS EC2.
 
-Playwright and JMeter figures are measured. Lighthouse is still to be run —
-its bracketed values are the only placeholders remaining, and must be replaced
-with a real audit rather than an estimate.
+All figures are measured against the deployed application. The only remaining
+placeholders are the two Lighthouse pages not yet audited, and one note to
+confirm from the Best Practices section of the report.
 
 ---
 
@@ -159,38 +159,74 @@ Run in Chrome DevTools → Lighthouse → Accessibility, against the deployed si
 
 ### Scores
 
-| Page | Before | After |
-|---|---|---|
-| Home `/` | `[ ]` | `[ ]` |
-| Feeds `/feeds` | `[ ]` | `[ ]` |
-| Dashboard `/dashboard` | `[ ]` | `[ ]` |
+Chrome DevTools Lighthouse, run against the deployed EC2 instance,
+19 August 2026.
 
-### Decisions made before the audit
+| Page | Accessibility | Performance | Best Practices | SEO |
+|---|---|---|---|---|
+| Dashboard `/dashboard` | **100** | 95 | 78 | 100 |
+| Home `/` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
+| Feeds `/feeds` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
 
-These were design choices, not fixes prompted by the report:
+**Accessibility scored 100 on the dashboard** — the page with the most
+complex content in the application: a live-updating status banner, a chart,
+four data tables and colour-coded state.
 
-- **Contrast measured, not judged.** Status colours were calculated against
-  their backgrounds, at 7:1 or better in both light and dark themes.
-- **State carried by the word, not only colour.** Status chips read "Healthy",
-  "Stale", "Empty", "Paused". An automated audit cannot detect a colour-only
-  design, but such a design is unreadable to a colour-blind user and in any
+### Why it scored 100 without remedial work
+
+There were no failed accessibility audits to fix, because the decisions that
+usually cause them were made while building rather than after measuring:
+
+- **Contrast was calculated, not judged by eye.** The status colours added for
+  this assessment were measured against their backgrounds before being
+  committed — 7.0:1 in the light theme and 7.2:1 in dark, both AAA. Insufficient
+  contrast is the single most common Lighthouse accessibility failure.
+- **State is carried by the word, not only the colour.** Status chips read
+  "Healthy", "Stale", "Empty", "Paused". This is the one that matters most and
+  the one Lighthouse *cannot* check — an automated audit will happily pass a
+  colour-only design that is unreadable to a colour-blind user or in a
   greyscale printout.
-- **Health changes announced.** The banner is a live region, so a screen
-  reader hears a state change rather than only sighted users seeing it.
-- **The chart describes itself.** The traffic graph carries a text description
-  of its shape and totals, so it is not merely a picture.
-- **Tables use real table semantics** with row and column headers, rather than
-  divs styled to look like a grid.
+- **The health banner is a live region.** `role="status"` with
+  `aria-live="polite"`, so a screen reader announces a state change rather than
+  only sighted users noticing it.
+- **The chart describes itself.** The SVG carries `role="img"` and an
+  `aria-label` stating its shape, range and totals, so it is not an unlabelled
+  graphic.
+- **Tables use real table semantics** — `<th scope="col">` and
+  `<th scope="row">` — rather than divs styled to look like a grid.
+- **Numbers use tabular figures**, which stops digits shifting sideways on each
+  five-second refresh. Not an audited item, but movement is a genuine
+  accessibility problem for some readers.
 
-### Changes made after reading the report
+That is the honest account: not "no changes were needed" but "these specific
+choices prevented the failures the audit looks for".
 
-`[List each failed audit and what you changed. If the score was already high,
-say which of the choices above prevented the common failures — that is a
-stronger answer than a list of last-minute patches.]`
+### Best Practices scored 78 — why, and why it is not a code problem
+
+The likely cause is that the Learner Lab instance serves over plain **HTTP with
+no TLS certificate**, which Lighthouse penalises heavily under Best Practices.
+A public IP address that changes on every lab restart cannot hold a certificate
+for a domain it does not own.
+
+`[Expand the Best Practices section in your own report and confirm the failing
+audits before saying this on camera. If browser console errors are also listed,
+note what they are.]`
+
+This is a deployment constraint rather than an application defect, and it is
+already recorded under Known limitations in the README: production would
+terminate HTTPS at a reverse proxy.
 
 ### How the results influenced the design
 
-`[Two or three sentences. What did the report make you reconsider?]`
+The audit confirmed the approach rather than redirecting it. The more useful
+conclusion is about the limits of the tool: Lighthouse verifies mechanical
+accessibility — contrast ratios, labels, ARIA roles, semantic structure — but
+it cannot tell whether the interface still makes sense when colour is removed.
+That gap is why status is spelled out in words, and it is the decision the
+score gives no credit for.
+
+`[If you run the other two pages and anything differs, record it above and say
+what you changed.]`
 
 ---
 
