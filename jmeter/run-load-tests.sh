@@ -38,7 +38,11 @@ API_PORT="${API_PORT:-4080}"
 LEVELS="$*"
 [ -z "$LEVELS" ] && LEVELS="1 10 100 1000 10000"
 
-mkdir -p "$OUT"
+# JMeter runs as the invoking user so nothing comes back owned by root, but
+# that also means it cannot write into the image's own install directory -
+# neither its log file nor the report generator's scratch space. Both are
+# redirected into the mounted output directory, which we do own.
+mkdir -p "$OUT" "$OUT/tmp"
 
 echo "target : $HOST  (web :$WEB_PORT, api :$API_PORT)"
 echo "levels : $LEVELS"
@@ -78,11 +82,14 @@ for LEVEL in $LEVELS; do
 
   docker run --rm --network host \
     --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp \
     -e JVM_ARGS="$HEAP" \
     -v "$REPO/jmeter:/plan" \
     -v "$OUT:/out" \
     "$IMAGE" \
     -n -t "$PLAN" \
+    -j "/out/jmeter-x$LEVEL.log" \
+    -Jjmeter.reportgenerator.temp_dir=/out/tmp \
     -Jhost="$HOST" -Jwebport="$WEB_PORT" -Japiport="$API_PORT" \
     -Jthreads="$LEVEL" -Jrampup="$RAMPUP" -Jloops="$LOOPS" \
     -l "/out/results-x$LEVEL.jtl" \
