@@ -571,7 +571,25 @@ from one machine would have every simulated client share an IP, and the
 unique-client metric would report 1 no matter how much load was applied — the
 metric would fail to measure the exact thing it exists for.
 
-Measured results are in [RESULTS.md](RESULTS.md).
+Measured on the deployed t3.micro:
+
+| Level | Req/sec | Avg ms | P95 ms | Errors |
+|---|---|---|---|---|
+| x1 | 10.7 | 92 | 312 | 0% |
+| x10 | 73.1 | 123 | 346 | 0% |
+| x100 | **125.1** | 384 | 917 | 0% |
+| x1000 | 37.4 | 10,735 | 41,463 | **10.2%** |
+
+Throughput peaks at 125 req/sec and then **falls**, which is congestion
+collapse rather than simple saturation: the single shared vCPU spends more time
+switching between waiting connections than completing work. The 95th percentile
+reaching 41 seconds against a 10.7 second average is queue depth, not slower
+processing — the minimum response time stayed in single-digit milliseconds
+throughout.
+
+The operationally interesting result is that `/health` itself failed 11.6% of
+the time at x1000. Behind a load balancer that instance would have been marked
+unhealthy and removed from rotation. Full analysis in [RESULTS.md](RESULTS.md).
 
 ### Lighthouse — accessibility
 
@@ -580,7 +598,23 @@ is explained on the About page; the short version is that an automated audit
 cannot tell whether meaning survives without colour, which is why status chips
 spell out their state rather than relying on a coloured dot.
 
-### Publishing the reports
+### The reports
+
+Measured results, with the interpretation the brief asks for, are in
+**[RESULTS.md](RESULTS.md)** — throughput, error rates, percentiles and
+per-endpoint behaviour at each load level.
+
+The full HTML reports are generated locally rather than committed (they are
+large, and each is a record of one run against one deployment). They are
+included in the submission zip, and served by the running application:
+
+| Report | Path on the running deployment |
+|---|---|
+| Playwright | `/reports/playwright/index.html` |
+| JMeter, highest level | `/reports/jmeter/index.html` |
+| JMeter, per level | `/reports/jmeter-x1/`, `-x10/`, `-x100/`, `-x1000/` |
+
+To regenerate and publish them:
 
 ```bash
 ./collect-reports.sh

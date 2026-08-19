@@ -16,10 +16,11 @@ export const siteConfig = {
     "https://github.com/22565725/Backend-implementation-API-and-database",
   githubFrontend: "https://github.com/22565725/cse5006-rss-lms-frontend",
 
-  // The Assessment 2 walkthrough was removed from this repository - it
-  // belongs to that submission and is still in the Assessment 2 repo. The
-  // About page now explains the system in text instead, which also serves
-  // as the speaking notes for the Assessment 3 recording.
+  // Assessment 3 walkthrough. The file is NOT committed - it is large, and
+  // docker-compose bind-mounts ./video into the served public directory, so
+  // dropping the recording there publishes it without rebuilding the image.
+  // The About page shows a placeholder until the file exists.
+  videoUrl: "/video/assessment3.mp4",
 } as const;
 
 export const navLinks = [
