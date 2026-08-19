@@ -16,9 +16,10 @@ export const siteConfig = {
     "https://github.com/22565725/Backend-implementation-API-and-database",
   githubFrontend: "https://github.com/22565725/cse5006-rss-lms-frontend",
 
-  // Assessment 2 walkthrough. The About page shows a placeholder while this
-  // is blank and renders a video player once it is set.
-  videoUrl: "/video/assessment2.mp4",
+  // The Assessment 2 walkthrough was removed from this repository - it
+  // belongs to that submission and is still in the Assessment 2 repo. The
+  // About page now explains the system in text instead, which also serves
+  // as the speaking notes for the Assessment 3 recording.
 } as const;
 
 export const navLinks = [
