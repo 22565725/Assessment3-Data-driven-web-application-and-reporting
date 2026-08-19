@@ -59,3 +59,8 @@ blob-report/
 # JMeter output. The plan and scripts are tracked; results are a record of
 # one run against one deployment, and the HTML reports are large.
 jmeter/results/
+
+# Collected test reports are served by the client but not tracked: they are
+# a record of one run against one deployment, and the HTML is bulky.
+/reports/*
+!/reports/.gitkeep

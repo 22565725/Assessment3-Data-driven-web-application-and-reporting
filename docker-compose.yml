@@ -35,6 +35,13 @@ services:
     container_name: rss-client
     ports:
       - "80:3000"
+    volumes:
+      # Test reports are generated AFTER the image is built, so they cannot be
+      # baked in. Bind-mounting them into the served public directory means
+      # collect-reports.sh makes them live immediately - no rebuild, which
+      # matters when a rebuild is fifteen minutes on a t3.micro.
+      # Read-only: the app serves these, it must never write them.
+      - ./reports:/app/public/reports:ro
     depends_on:
       - api
     environment:
