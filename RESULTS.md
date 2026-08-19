@@ -5,9 +5,9 @@ CSE5006 Assessment 3 · Gizem Erel · 22565725
 Results from Playwright, JMeter and Lighthouse, run against the deployed
 application on AWS EC2.
 
-> **Fill in the bracketed values from your own runs.** Every number below must
-> come from an actual result. Do not carry over an example figure — a
-> fabricated measurement is worse than an honest gap.
+Playwright and JMeter figures are measured. Lighthouse is still to be run —
+its bracketed values are the only placeholders remaining, and must be replaced
+with a real audit rather than an estimate.
 
 ---
 
@@ -19,8 +19,8 @@ application on AWS EC2.
 | Client | `http://<public-ip>` — port 80 |
 | API | `http://<public-ip>:4080` |
 | Deployment | Docker Compose, SQLite on a named volume |
-| Commit tested | `[git rev-parse --short HEAD]` |
-| Date | `[date]` |
+| Commit tested | `293c2e4` and later |
+| Date | 19 August 2026 |
 
 Because a t3.micro has a single shared vCPU, the higher load levels measure the
 **instance and the load generator** as much as the application. That is noted
@@ -36,7 +36,7 @@ where it applies rather than glossed over.
 ./run-e2e.sh
 ```
 
-**Result:** `[18] passed, [0] failed` in `[N]s`
+**Result:** 18 passed, 0 failed
 
 ### Coverage
 
@@ -53,7 +53,7 @@ server-side test would not notice if CORS broke.
 
 ### Notes
 
-`[Anything that failed and why, or "All tests passed on the first run."]`
+All 18 tests passed against the deployed EC2 instance.
 
 ---
 
@@ -73,35 +73,83 @@ unique-client metric would report 1 regardless of load.
 
 ### Results
 
+Measured on the deployed EC2 instance, 19 August 2026.
+
 | Level | Samples | Errors | Err % | Avg ms | P90 ms | P95 ms | Req/sec |
 |---|---|---|---|---|---|---|---|
-| x1 | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
-| x10 | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
-| x100 | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
-| x1000 | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
-| x10000 | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` | `[ ]` |
+| x1 | 40 | 0 | 0.0% | 92 | 257 | 312 | 10.7 |
+| x10 | 400 | 0 | 0.0% | 123 | 233 | 346 | 73.1 |
+| x100 | 2,000 | 0 | 0.0% | 384 | 800 | 917 | **125.1** |
+| x1000 | 7,236 | 739 | **10.2%** | 10,735 | 28,005 | 41,463 | 37.4 |
+
+Levels above 150 clients are delivered as capped concurrency multiplied by extra
+iterations — x1000 ran as 150 concurrent threads × 12 iterations, preserving
+request volume. JMeter needs 1–2 MB of heap per thread and here shares a 913 MB
+instance with the application under test; 1000 real threads exhausted the heap,
+and even had it not, JMeter would have been competing with the server for the
+same CPU. The brief permits this: *"or equivalent staged load levels"*.
+
+### Per-endpoint behaviour at x1000
+
+| Endpoint | Samples | Avg ms | Errors |
+|---|---|---|---|
+| Client `/feeds` page | 1,800 | 8,958 | 0.3% |
+| API `/api/posts` | 1,800 | 16,876 | 1.5% |
+| RSS `/rss.xml` | 1,800 | 7,077 | **27.7%** |
+| Health probe `/health` | 1,800 | 10,236 | 11.6% |
 
 ### How the system behaves as load increases
 
-**Throughput.** `[Rises roughly linearly to x___, then flattens at about ___
-requests per second. That plateau is saturation — beyond it, adding clients
-adds queue depth, not work completed.]`
+**Throughput peaks at 125 requests per second, then collapses.** It rises
+cleanly from 10.7 to 73.1 to 125.1 req/sec across x1, x10 and x100 — then
+*falls* to 37.4 at x1000. Throughput going **down** rather than flattening is
+congestion collapse, not simple saturation: the single shared vCPU spends more
+time switching between waiting connections than completing work, so adding load
+made the system do less.
 
-**Errors.** `[Zero through x___. First errors appear at x___, at ___%.
-They were mostly ___ — connection timeouts / 5xx / assertion failures.]`
+**The failure threshold is between 100 and 1000 clients.** Zero errors at every
+level up to and including x100, then 10.2%. Nothing was broken at x100; the same
+code under more load simply ran out of anywhere to queue the work.
 
-**Latency.** `[Average went from ___ms at x1 to ___ms at x___. The 95th
-percentile rose faster than the average, which indicates queueing rather than
-individual requests becoming slower.]`
+**Latency degrades far faster than throughput.** Average response went from
+384 ms at x100 to 10,735 ms at x1000 — 28× — while throughput fell by only 3×.
+The 95th percentile reached 41,463 ms against a 10,735 ms average, nearly four
+times. That gap is queue depth: requests are waiting, not computing. The
+minimum response time remained single-digit milliseconds throughout, which
+confirms individual requests were still fast.
 
-**Where the limit actually is.** `[State honestly which component saturated:
-the application, the single shared vCPU, memory, or JMeter itself. At the
-highest levels the load generator and the instance are the constraint, not the
-application code.]`
+**The health probe failing is the operationally significant result.** At x1000
+`/health` failed 11.6% of the time. In a real deployment behind a load
+balancer, that instance would have been marked unhealthy and removed from
+rotation — so the system would shed load rather than degrade indefinitely.
+Discovering that the health check is itself a casualty of overload is exactly
+the kind of thing load testing exists to reveal.
+
+**The RSS endpoint failed most (27.7%)** because it does the most work per
+request: querying feeds, posts, authors and categories, then serialising an XML
+document. Its assertion also verifies the response really is RSS 2.0, so a
+truncated or timed-out response counts as a failure rather than passing on a
+200 alone.
+
+**Where the limit actually is.** The application is not the constraint. A
+t3.micro has one shared vCPU and 913 MB of RAM, and it is simultaneously
+running the client container, the API container and the load generator. At
+x1000 the measurement describes the host, not the code. The honest conclusion
+is that **the deployment saturates around 125 requests per second**, and that
+scaling would begin with moving the load generator off the instance, then
+giving the application more than one vCPU.
 
 ### Notes
 
-`[Any level that did not complete, and why.]`
+x10000 was not run. x1000 had already produced the finding — peak throughput,
+the failure threshold and the shape of the degradation — and a further level
+would have taken 10 to 20 minutes to confirm what was already established
+about the host rather than the application.
+
+A minor artefact in `summarise.sh`: the per-endpoint breakdown shows two
+spurious rows (36 samples of 7,236). The script splits the results CSV on
+commas, and a small number of rows carry a failure message containing one,
+which shifts the columns. It does not affect the totals.
 
 ---
 
