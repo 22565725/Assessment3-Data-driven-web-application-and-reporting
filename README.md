@@ -52,7 +52,11 @@ rebuild would destroy the data.
 | Language | TypeScript | 5 |
 | ORM | Prisma | 6.19.3 |
 | Database | SQLite | — |
-| Containers | Docker + docker-compose | — |
+| Validation | Zod | 4 |
+| E2E testing | Playwright | 1.62 |
+| Load testing | Apache JMeter | 5.5 |
+| Accessibility | Lighthouse | — |
+| Containers | Docker + Compose v2 | — |
 | Host | AWS EC2 (Amazon Linux 2023, t3.micro) | — |
 
 ---
@@ -66,30 +70,50 @@ rebuild would destroy the data.
 │   │   ├── api/
 │   │   │   ├── feeds/route.ts    CRUD for feeds
 │   │   │   ├── posts/route.ts    CRUD for posts
+│   │   │   ├── rss/route.ts      the published RSS 2.0 feed
+│   │   │   ├── metrics/route.ts  everything the dashboard reads
 │   │   │   ├── health/route.ts   liveness + database probe
 │   │   │   └── count/route.ts    request and content statistics
 │   │   └── page.tsx              self-documenting API reference page
 │   ├── lib/
 │   │   ├── prisma.ts             single PrismaClient instance
-│   │   └── http.ts               response envelope, CORS, logging, errors
+│   │   ├── http.ts               response envelope, CORS, logging, errors
+│   │   ├── rss.ts                RSS 2.0 document generation
+│   │   ├── validation.ts         Zod schemas and inferred DTOs
+│   │   └── metrics.ts            every dashboard figure, derived here
 │   ├── prisma/
 │   │   ├── schema.prisma         the data model
 │   │   ├── migrations/           generated SQL, committed
-│   │   └── seed.mjs              idempotent seed data
+│   │   ├── seed.mjs              idempotent seed data
+│   │   └── simulate.mjs          simulated records and traffic history
 │   ├── Dockerfile                multi-stage production build
 │   └── entrypoint.sh             migrate, seed, then start
 │
 ├── frontend/                   RSS Client (extends Assessment 1)
 │   ├── app/
+│   │   ├── dashboard/            operational dashboard
 │   │   ├── feeds/                list, detail, new, edit
-│   │   ├── about/                project info and architecture diagram
+│   │   ├── about/                what A3 added, test reports, Lighthouse
 │   │   └── settings/             display preferences
-│   ├── Components/               PostCard, FeedList, PostForm, layout
+│   ├── Components/
+│   │   ├── dashboard/            tiles, alerts, charts, status chips
+│   │   └── feeds/                PostCard, FeedList, PostForm, SubscribeLink
 │   ├── lib/
 │   │   ├── api.ts                the only module that talks to the server
 │   │   └── dates.ts              Australian date formatting
+│   ├── tests/                    Playwright specs
+│   ├── playwright.config.ts
 │   └── Dockerfile
 │
+├── jmeter/
+│   ├── rss-load-test.jmx       one plan, parameterised for every level
+│   ├── run-load-tests.sh       staged x1 to x10000
+│   └── summarise.sh            five runs reduced to one table
+│
+├── reports/                    collected test reports, served at /reports
+├── run-e2e.sh                  Playwright in a container
+├── collect-reports.sh          publish reports to the About page
+├── RESULTS.md                  measured results and their interpretation
 └── docker-compose.yml          both services, ports and the volume
 ```
 
@@ -239,8 +263,27 @@ Tag or topic, many-to-many with `Post`. SQLite supports Prisma's implicit
 many-to-many, so no join table is hand-written.
 
 ### RequestLog
-One row per API request: method, path, status code and duration. This is what
-`GET /count` reads.
+One row per API request: method, path, status code, duration, **which client
+called** and **which feed the request concerned**. This is what `/count` and
+the dashboard read.
+
+`clientId` is pseudonymous — an `X-Client-Id` header when the caller sends one,
+otherwise a salted hash of the IP. An IP address is personal data, and counting
+distinct callers never requires knowing who they are. The header takes
+precedence because a load test runs from one machine: without it ten thousand
+simulated clients would share an address and register as one.
+
+`feedId` is a plain integer, deliberately **not** a foreign key. Telemetry
+records what happened; deleting a feed must not rewrite the history of requests
+served for it while it existed.
+
+### MetricSnapshot
+Hourly rollup of RequestLog, keyed on the start of the hour. RequestLog remains
+the source of truth — every dashboard figure is recomputable from it — but
+scanning every row to draw a 24-hour chart gets slower as the log grows, and an
+hour that has passed can never change. Only fully elapsed hours are stored: the
+current hour is still accumulating, and persisting a partial figure would leave
+a permanently wrong row behind.
 
 ### Relationship decisions
 
@@ -337,6 +380,20 @@ being given the address.
 |---|---|---|
 | GET | `/health` or `/api/health` | Queries SQLite; returns **503** if unreachable |
 | GET | `/count` or `/api/count` | Request totals, per-endpoint breakdown, content counts |
+| GET | `/api/metrics` | Everything the dashboard reads, in one response |
+
+`/api/metrics` accepts `?hours=24` for the time-series window, `?clients=10`
+for how many top clients to return, and `?snapshot=1` to roll completed hours
+into `MetricSnapshot`.
+
+It is deliberately **one** endpoint rather than six. The dashboard polls on a
+timer, and six requests per poll would multiply the very load it exists to
+measure — and could return figures from six slightly different moments, so the
+tiles would disagree with the table beneath them.
+
+Note that this endpoint is itself logged, like every other route. That is
+correct: polling the dashboard *is* traffic, and hiding it would make the
+request count a lie.
 
 `/health` runs an actual `SELECT 1`. A health check that returns a hardcoded
 `{"status":"ok"}` will report healthy while the database is gone and every
@@ -433,6 +490,110 @@ Invoke-RestMethod -Uri "http://localhost:4080/api/posts" -Method Post `
 
 ---
 
+## The dashboard
+
+`/dashboard` in the RSS Client. Refreshes every five seconds, and **every
+figure is read from the database on each refresh** — nothing on the page is
+hardcoded.
+
+Laid out by the question it answers rather than by data source: is it working,
+how much is it doing, what needs attention, then the detail behind those
+answers.
+
+| Section | Reports |
+|---|---|
+| Health banner | API and database both responding, latency, uptime |
+| Metric tiles | Total requests, unique clients, feeds, posts, error rate, average response |
+| Alerts | Empty feeds, stale feeds, rejected payloads, server errors, silence |
+| Requests over time | Hourly volume for 24 hours, with errors on the same axes |
+| Requests per feed | With a derived status chip |
+| Requests per client | Named client keys and hashed IPs together |
+| Feed status | Healthy, stale, empty or paused — derived on read |
+
+**Feed status is derived, not stored:** paused when inactive, empty with no
+posts, stale when not fetched within 24 hours, healthy otherwise. Checked in
+that order, so a paused feed with no posts reports as paused — the fact an
+operator actually acted on.
+
+**Alerts are computed from data rather than configured,** so the panel always
+describes the system as it is. Total silence is reported too, because without
+it an idle server and a healthy one look identical.
+
+The charts are hand-built inline SVG. The area chart is about forty lines of
+geometry, and a charting library would add hundreds of kilobytes to draw one
+shape. Errors are plotted over the *same* axes as requests rather than beside
+them, because the question being asked is whether errors rose when traffic did,
+and two charts cannot answer that.
+
+Accessibility shaped several decisions: status is carried by the word as well
+as the colour so the page survives greyscale and colour vision deficiency; the
+chart carries a text description of its own shape; health changes are announced
+through a live region; and every number uses tabular figures, without which
+digits jitter sideways on each refresh.
+
+---
+
+## Testing
+
+### Playwright — end to end
+
+```bash
+./run-e2e.sh                      # all 18 tests
+./run-e2e.sh --list               # list without running
+./run-e2e.sh server-crud.spec.ts  # one file
+```
+
+Runs in the official Playwright container, so nothing needs installing on the
+host beyond Docker. The suite targets a **running deployment** rather than
+starting its own server, which means the same tests verify the local stack and
+the EC2 instance unchanged, and check the system as actually deployed.
+
+| Spec | Use case | Covers |
+|---|---|---|
+| `server-crud.spec.ts` | Server | Create, read, update, delete a feed over HTTP; 409 on duplicate URL; 400 with the offending field named; cascade delete; RSS 2.0 output with RFC-822 dates |
+| `client-feed.spec.ts` | Client | Browser loads the Feeds page and opens a post; subscribe link and autodiscovery tag; feed parses as valid RSS; `/health` returns 200 |
+| `dashboard-metrics.spec.ts` | Observability | Generates traffic and asserts the numbers moved — a dashboard of hardcoded figures would fail this |
+
+### JMeter — staged load
+
+```bash
+./jmeter/run-load-tests.sh 1 10 100 1000
+./jmeter/summarise.sh
+```
+
+One plan parameterised by thread count, so every level is the same file invoked
+with different numbers rather than five copies that would drift apart. Four
+samplers walk the real journey: the client page, the API it calls, the
+published feed, and the health endpoint.
+
+Each virtual user sends a distinct `X-Client-Id`. Without it, JMeter running
+from one machine would have every simulated client share an IP, and the
+unique-client metric would report 1 no matter how much load was applied — the
+metric would fail to measure the exact thing it exists for.
+
+Measured results are in [RESULTS.md](RESULTS.md).
+
+### Lighthouse — accessibility
+
+Run in Chrome DevTools against the deployed site. What it can and cannot check
+is explained on the About page; the short version is that an automated audit
+cannot tell whether meaning survives without colour, which is why status chips
+spell out their state rather than relying on a coloured dot.
+
+### Publishing the reports
+
+```bash
+./collect-reports.sh
+```
+
+Copies the Playwright and JMeter reports into `reports/`, which is bind-mounted
+into the client's public directory and served at `/reports/...`, linked from the
+About page. A bind mount rather than baking them into the image, because
+reports are generated *after* the build and a rebuild is fifteen minutes on a
+t3.micro.
+
+---
+
 ## Frontend integration
 
 The Assessment 1 interface now reads everything from the API.
@@ -486,19 +647,36 @@ Stated deliberately rather than hidden.
 - **No Docker `HEALTHCHECK` directive.** `/api/health` exists and returns the
   right status codes; wiring it into the container definition so the
   orchestrator restarts a sick container is a small next step.
+- **Snapshots are built on demand, not on a schedule.** `MetricSnapshot` rows
+  are written when `/api/metrics?snapshot=1` is called. A scheduled job would
+  be the production answer; nothing here depends on it, since every figure is
+  recomputable from `RequestLog`.
+- **Load testing is bounded by the instance.** A t3.micro has one shared vCPU,
+  so at the highest levels the measurement reflects the host and the load
+  generator rather than the application. This is reported rather than hidden —
+  see [RESULTS.md](RESULTS.md).
 
 ---
 
 ## Assessment criteria
 
-| Criterion | Where to find it |
+| Requirement | Where to find it |
 |---|---|
-| Database schema and ORM | `api/prisma/schema.prisma`, generated SQL in `api/prisma/migrations/` |
-| CRUD endpoints | `api/app/api/feeds/route.ts`, `api/app/api/posts/route.ts` |
-| Operational endpoints | `api/app/api/health/route.ts`, `api/app/api/count/route.ts` |
-| Dockerise | `api/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`, `api/entrypoint.sh` |
-| Frontend–backend integration | `frontend/lib/api.ts`, `frontend/app/feeds/`, `frontend/Components/feeds/` |
-| Code quality and GitHub | Feature branches merged into a clean `main`; no `node_modules`; shared helpers in `api/lib/http.ts` |
+| Data-driven dashboard | `frontend/app/dashboard/`, `frontend/Components/dashboard/` |
+| Database persistence | `api/prisma/schema.prisma`, migrations in `api/prisma/migrations/` |
+| Simulated input records | `api/prisma/simulate.mjs` |
+| Metrics stored in the database | `RequestLog` and `MetricSnapshot` models; `api/lib/metrics.ts` |
+| Health check returning 200 | `api/app/api/health/route.ts`, reachable at `/health` |
+| Total requests, per feed, per client, unique clients | `api/lib/metrics.ts`, `GET /api/metrics` |
+| Feed status summaries | `getPerFeed()` in `api/lib/metrics.ts` |
+| Alerts and warning indicators | `getAlerts()` in `api/lib/metrics.ts`; `Components/dashboard/AlertPanel.tsx` |
+| Playwright — server use case | `frontend/tests/server-crud.spec.ts` |
+| Playwright — client use case | `frontend/tests/client-feed.spec.ts` |
+| JMeter load testing | `jmeter/rss-load-test.jmx`, `jmeter/run-load-tests.sh` |
+| Lighthouse accessibility | [RESULTS.md](RESULTS.md); design decisions on the About page |
+| React, Next.js, server-side practices | App Router throughout; server components where state allows |
+| Modular, reusable code | `api/lib/` shared helpers; `BreakdownTable` serves both per-feed and per-client views |
+| GitHub history | Feature branches merged into `main`; no `node_modules` |
 
 ---
 
@@ -507,5 +685,6 @@ Stated deliberately rather than hidden.
 **Gizem Erel** — 22565725
 CSE5006 Web Development, La Trobe University
 
-- Assessment 2 (this repository): <https://github.com/22565725/Backend-implementation-API-and-database>
+- Assessment 3 (this repository): <https://github.com/22565725/Assessment3-Data-driven-web-application-and-reporting>
+- Assessment 2 (backend, API and database): <https://github.com/22565725/Backend-implementation-API-and-database>
 - Assessment 1 (frontend): <https://github.com/22565725/cse5006-rss-lms-frontend>
