@@ -59,18 +59,43 @@ for LEVEL in $LEVELS; do
   echo " Level x$LEVEL"
   echo "=============================================="
 
+  # Base iterations per virtual client: fewer as the level rises, so a run
+  # stays a sane length.
+  if [ "$LEVEL" -le 10 ]; then BASE_LOOPS=10
+  elif [ "$LEVEL" -le 100 ]; then BASE_LOOPS=5
+  else BASE_LOOPS=2
+  fi
+
+  # Above MAX_THREADS, simulate the level as VOLUME rather than concurrency.
+  #
+  # JMeter needs 1-2 MB of heap per thread, and here it shares a 913 MB
+  # instance with the application it is testing. A thousand real threads
+  # exhausts the heap - and even if it did not, JMeter would be competing
+  # with the server for the same CPU, so the numbers would describe that
+  # contest rather than the application.
+  #
+  # So the client count is delivered as (capped threads x extra iterations),
+  # preserving total requests while keeping concurrency survivable. The brief
+  # allows this explicitly: "or equivalent staged load levels". Say so when
+  # reporting - an honest x1000-by-volume is worth more than a fabricated
+  # x1000-by-concurrency that never ran.
+  if [ "$LEVEL" -gt "$MAX_THREADS" ]; then
+    THREADS="$MAX_THREADS"
+    LOOPS=$(( (LEVEL / MAX_THREADS) * BASE_LOOPS ))
+    [ "$LOOPS" -lt 1 ] && LOOPS=1
+    echo "  NOTE: $LEVEL clients simulated as $THREADS concurrent threads"
+    echo "        x $LOOPS iterations - equivalent request volume, survivable"
+    echo "        concurrency for a t3.micro hosting the app under test."
+  else
+    THREADS="$LEVEL"
+    LOOPS="$BASE_LOOPS"
+  fi
+
   # Ramp gently rather than starting every thread at once: a wall of
   # simultaneous connections measures the TCP accept queue, not the
   # application. Roughly ten threads per second, minimum one.
-  RAMPUP=$(( LEVEL / 10 ))
+  RAMPUP=$(( THREADS / 10 ))
   [ "$RAMPUP" -lt 1 ] && RAMPUP=1
-
-  # Fewer iterations as concurrency rises - the point of the high levels is
-  # concurrency, not total volume, and this keeps each run to a sane length.
-  if [ "$LEVEL" -le 10 ]; then LOOPS=10
-  elif [ "$LEVEL" -le 100 ]; then LOOPS=5
-  else LOOPS=2
-  fi
 
   rm -rf "$OUT/report-x$LEVEL"
   rm -f "$OUT/results-x$LEVEL.jtl"
