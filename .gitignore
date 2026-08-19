@@ -55,3 +55,7 @@ playwright-report/
 test-results/
 blob-report/
 .playwright/
+
+# JMeter output. The plan and scripts are tracked; results are a record of
+# one run against one deployment, and the HTML reports are large.
+jmeter/results/
