@@ -55,8 +55,23 @@ echo "levels : $LEVELS"
 echo "output : $OUT"
 echo
 
+# Check Docker access BEFORE anything else. Without this the run gets as far
+# as printing a level header and then fails per-level, which reads like a
+# load-testing problem rather than a permissions one.
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: cannot reach the Docker daemon."
+  echo
+  echo "Group membership applies per shell. Either activate it here:"
+  echo "    newgrp docker"
+  echo "or reconnect your session, which fixes it for good. If 'id -nG'"
+  echo "does not list docker at all:"
+  echo "    sudo usermod -aG docker ec2-user   (then reconnect)"
+  exit 1
+fi
+
 if ! curl -sf -o /dev/null "http://$HOST:$API_PORT/health"; then
   echo "ERROR: no RSS Server at http://$HOST:$API_PORT/health"
+  echo "The load test needs a running deployment: docker compose up -d"
   exit 1
 fi
 

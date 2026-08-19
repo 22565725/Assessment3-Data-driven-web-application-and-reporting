@@ -42,6 +42,15 @@ echo "api  : $API"
 echo
 
 # Fail early with a clear message rather than a confusing test failure.
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: cannot reach the Docker daemon."
+  echo
+  echo "Group membership applies per shell. Either activate it here:"
+  echo "    newgrp docker"
+  echo "or reconnect your session, which fixes it for good."
+  exit 1
+fi
+
 if ! curl -sf -o /dev/null "$API/health"; then
   echo "ERROR: no RSS Server at $API/health"
   echo "The suite tests a running deployment. Start it with:"
